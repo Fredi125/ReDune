@@ -14,11 +14,17 @@ dune1992-re/
 ├── README.md           ← Project documentation
 ├── lib/                ← Shared Python library
 │   ├── __init__.py
-│   ├── compression.py  ← HSQ decompressor + F7 RLE codec
+│   ├── compression.py  ← HSQ compressor/decompressor + F7 RLE codec
 │   └── constants.py    ← Game constants, offsets, enums
 ├── tools/              ← CLI tools
-│   ├── save_editor.py  ← Read/write save files (F7 RLE, all fields)
+│   ├── save_editor.py       ← Read/write save files (F7 RLE, all fields)
 │   ├── condit_decompiler.py ← CONDIT VM bytecode decompiler
+│   ├── condit_recompiler.py ← CONDIT expression → bytecode compiler
+│   ├── dialogue_decompiler.py ← DIALOGUE.HSQ bytecode decompiler
+│   ├── phrase_dumper.py     ← PHRASE*.HSQ text string extractor
+│   ├── npc_smuggler_decoder.py ← NPC & smuggler save data decoder
+│   ├── sal_decoder.py       ← SAL scene layout decoder
+│   ├── bin_decoder.py       ← BIN file decoder (font, tables, anim)
 │   └── hsq_decompress.py   ← HSQ file decompressor
 ├── ui/                 ← Web UI
 │   └── save_explorer.jsx   ← React save file explorer
@@ -87,22 +93,27 @@ python3 tools/condit_decompiler.py samples/CONDIT.HSQ --chains
 - Docstrings with format descriptions
 - Hex values uppercase: `0x4448` not `0x4448`
 
+## Completed Work
+
+- [x] Decode DIALOGUE.HSQ bytecode format → `tools/dialogue_decompiler.py`
+- [x] Map DS variables from Cryogenic source → `lib/constants.py`
+- [x] Build CONDIT recompiler → `tools/condit_recompiler.py` (63.7% roundtrip)
+- [x] Decode NPC data block (save offset 0x53F4+) → `tools/npc_smuggler_decoder.py`
+- [x] Map Smuggler data (0x54F6+) → `tools/npc_smuggler_decoder.py`
+- [x] Build SAL scene decoder → `tools/sal_decoder.py`
+- [x] HSQ compressor → `lib/compression.py` (186/186 files roundtrip)
+- [x] Analyze PHRASE*.HSQ → `tools/phrase_dumper.py`
+- [x] Decode BIN files (DNCHAR font, TABLAT, VER, THE_END) → `tools/bin_decoder.py`
+
 ## Pending Work
 
-### High Priority
-- [ ] Decode DIALOGUE.HSQ bytecode format (likely similar VM to CONDIT)
-- [ ] Map remaining DS variables (0x10-0x12, 0x25-0x26, 0x57, 0x80-0x90 ranges)
-- [ ] Build CONDIT recompiler (bytecodes from expressions)
+### Medium Priority
+- [ ] Decode MAP.HSQ (world map data)
+- [ ] Decode sprite/graphics HSQ format (palettes, pixel data)
+- [ ] LOP animation format decoder
 - [ ] Integrate CONDIT with DIALOGUE system (cross-reference condition indices)
 
-### Medium Priority
-- [ ] Decode NPC data block (save offset 0x53F4+)
-- [ ] Map Smuggler data (0x54F6+)
-- [ ] Build SAL scene editor/viewer
-- [ ] HSQ compressor (for modified game resources)
-
 ### Low Priority
-- [ ] Analyze PHRASE11.HSQ (dialogue text strings)
 - [ ] HERAD music format decoder
 - [ ] HNM video frame extractor
 - [ ] Complete game state editor (troops + NPCs + smugglers + conditions)
