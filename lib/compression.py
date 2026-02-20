@@ -134,6 +134,224 @@ def hsq_get_sizes(data: bytes) -> tuple:
 
 
 # =============================================================================
+# HSQ COMPRESSION (Game resource files: *.HSQ)
+# =============================================================================
+
+def hsq_compress(data: bytes) -> bytes:
+    """
+    Compress data with HSQ (Cryo Interactive LZ77-variant) encoding.
+
+    Produces output compatible with hsq_decompress(). Uses greedy matching
+    with the same three command types as the original format:
+      - Literal byte (1 bit overhead + byte)
+      - Short back-reference: offset -256..-1, length 2-5 (4 bits + byte)
+      - Long back-reference: offset -8192..-1, length 3-257 (2 bits + word [+byte])
+
+    HSQ header checksum: sum of all 6 header bytes ≡ 0xAB (mod 256).
+
+    Args:
+        data: Uncompressed data
+
+    Returns:
+        HSQ-compressed bytes with valid header
+    """
+    src_len = len(data)
+    if src_len == 0:
+        # Empty data: just header + EOF
+        # EOF = bits 0,1 (long ref prefix) + word 0x0000 (count=0) + byte 0x00
+        # Bit word: bit0=0, bit1=1, rest zero (16 raw data bits, no sentinel)
+        eof_bits = (0 << 0) | (1 << 1)  # 0x0002
+        body = struct.pack('<H', eof_bits) + struct.pack('<H', 0) + bytes([0])
+        hdr = bytearray(6)
+        struct.pack_into('<H', hdr, 0, 0)
+        hdr[2] = 0x00
+        struct.pack_into('<H', hdr, 3, 6 + len(body))
+        hdr[5] = (0xAB - hdr[0] - hdr[1] - hdr[2] - hdr[3] - hdr[4]) & 0xFF
+        return bytes(hdr) + body
+
+    # --- LZ77 hash-chain matching ---
+    # Hash table maps 3-byte sequences to most recent position;
+    # chain array links positions with matching hashes for fast lookup.
+    HASH_SIZE = 1 << 15  # 32K hash table
+    HASH_MASK = HASH_SIZE - 1
+    MAX_CHAIN = 64  # max chain depth to search
+
+    head = [-1] * HASH_SIZE  # hash → most recent position
+    prev = [0] * src_len     # position → previous position with same hash
+
+    def hash3(p):
+        if p + 2 >= src_len:
+            return 0
+        return ((data[p] << 10) ^ (data[p + 1] << 5) ^ data[p + 2]) & HASH_MASK
+
+    commands = []
+    pos = 0
+
+    while pos < src_len:
+        best_len = 0
+        best_off = 0
+        max_len = min(src_len - pos, 257)
+
+        if pos + 2 < src_len:
+            h = hash3(pos)
+            match_pos = head[h]
+            chain_count = 0
+            min_pos = max(0, pos - 8192)
+
+            while match_pos >= min_pos and chain_count < MAX_CHAIN:
+                # Check match length
+                ml = 0
+                while ml < max_len and data[pos + ml] == data[match_pos + ml]:
+                    ml += 1
+                if ml > best_len:
+                    best_len = ml
+                    best_off = pos - match_pos
+                    if best_len >= max_len:
+                        break
+                chain_count += 1
+                next_pos = prev[match_pos]
+                if next_pos >= match_pos:
+                    break  # avoid infinite loop
+                match_pos = next_pos
+
+            # Insert current position into hash chain
+            prev[pos] = head[h] if head[h] >= 0 else pos
+            head[h] = pos
+        else:
+            # Near end of data, update hash for completeness
+            if pos + 2 < src_len:
+                h = hash3(pos)
+                prev[pos] = head[h] if head[h] >= 0 else pos
+                head[h] = pos
+
+        if best_off <= 256 and best_len >= 2:
+            # Short back-reference (offset -256..-1, length 2-5)
+            use_len = min(best_len, 5)
+            count_bits = use_len - 2
+            offset_byte = (-best_off) & 0xFF
+            commands.append(('short', count_bits, offset_byte))
+            # Insert skipped positions into hash chain
+            for j in range(1, use_len):
+                if pos + j + 2 < src_len:
+                    hj = hash3(pos + j)
+                    prev[pos + j] = head[hj] if head[hj] >= 0 else pos + j
+                    head[hj] = pos + j
+            pos += use_len
+        elif best_len >= 3:
+            # Long back-reference
+            offset_13 = ((-best_off) + 8192) & 0x1FFF
+            copy_count = best_len - 2
+
+            if 1 <= copy_count <= 7:
+                word = (offset_13 << 3) | copy_count
+                commands.append(('long', word))
+            else:
+                word = (offset_13 << 3) | 0
+                commands.append(('long_ext', word, copy_count & 0xFF))
+
+            # Insert skipped positions into hash chain
+            for j in range(1, best_len):
+                if pos + j + 2 < src_len:
+                    hj = hash3(pos + j)
+                    prev[pos + j] = head[hj] if head[hj] >= 0 else pos + j
+                    head[hj] = pos + j
+            pos += best_len
+        else:
+            commands.append(('literal', data[pos]))
+            pos += 1
+
+    # EOF marker: long ref with count=0, extra_byte=0
+    commands.append(('long_ext', 0, 0))
+
+    # --- Encode bit stream ---
+    # The decompressor reads bits from uint16 words with a sentinel.
+    # Each uint16 provides 16 data bits: bit 0 from refill, bits 1-15 from queue.
+    # The sentinel at queue[15] is added by the decompressor (0x8000 | word>>1),
+    # so the compressor writes all 16 bits as raw data.
+    class BitWriter:
+        def __init__(self):
+            self.stream = bytearray()
+            self.word_bits = []  # current word's bits (up to 16)
+            self.word_pos = -1   # position in stream where current word will go
+
+        def _start_word(self):
+            """Reserve space for a uint16 bit word."""
+            self.word_pos = len(self.stream)
+            self.stream.extend(b'\x00\x00')  # placeholder
+            self.word_bits = []
+
+        def write_bit(self, b):
+            if self.word_pos < 0 or len(self.word_bits) >= 16:
+                self._flush_word()
+                self._start_word()
+            self.word_bits.append(b & 1)
+
+        def write_byte(self, b):
+            self.stream.append(b & 0xFF)
+
+        def write_word(self, w):
+            self.stream.extend(struct.pack('<H', w & 0xFFFF))
+
+        def _flush_word(self):
+            if self.word_pos < 0:
+                return
+            # Pad to 16 bits — the decompressor adds its own sentinel
+            # via 0x8000 | (word >> 1), so all 16 bits are data
+            while len(self.word_bits) < 16:
+                self.word_bits.append(0)
+            word = 0
+            for i, b in enumerate(self.word_bits[:16]):
+                word |= ((b & 1) << i)
+            struct.pack_into('<H', self.stream, self.word_pos, word)
+            self.word_bits = []
+            self.word_pos = -1
+
+        def finish(self):
+            if self.word_pos >= 0:
+                self._flush_word()
+            return bytes(self.stream)
+
+    w = BitWriter()
+
+    for cmd in commands:
+        if cmd[0] == 'literal':
+            w.write_bit(1)
+            w.write_byte(cmd[1])
+        elif cmd[0] == 'short':
+            count_bits, offset_byte = cmd[1], cmd[2]
+            w.write_bit(0)
+            w.write_bit(0)
+            w.write_bit((count_bits >> 1) & 1)  # b0 in decompressor
+            w.write_bit(count_bits & 1)          # b1 in decompressor
+            w.write_byte(offset_byte)
+        elif cmd[0] == 'long':
+            word = cmd[1]
+            w.write_bit(0)
+            w.write_bit(1)
+            w.write_word(word)
+        elif cmd[0] == 'long_ext':
+            word, extra = cmd[1], cmd[2]
+            w.write_bit(0)
+            w.write_bit(1)
+            w.write_word(word)
+            w.write_byte(extra)
+
+    compressed_body = w.finish()
+
+    # --- Build header ---
+    decomp_size = src_len
+    comp_size = 6 + len(compressed_body)
+
+    hdr = bytearray(6)
+    struct.pack_into('<H', hdr, 0, decomp_size & 0xFFFF)
+    hdr[2] = 0x00
+    struct.pack_into('<H', hdr, 3, comp_size & 0xFFFF)
+    hdr[5] = (0xAB - hdr[0] - hdr[1] - hdr[2] - hdr[3] - hdr[4]) & 0xFF
+
+    return bytes(hdr) + compressed_body
+
+
+# =============================================================================
 # F7 RLE COMPRESSION (Save files: DUNE*.SAV)
 # =============================================================================
 
