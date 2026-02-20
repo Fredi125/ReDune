@@ -2,8 +2,8 @@
 """
 Dune 1992 Game File Index
 
-Comprehensive catalog of all 186 HSQ game files with classification,
-format details, and decoder tool references.
+Comprehensive catalog of all game files (HSQ, VOC, HNM, LOP, SAL, BIN, etc.)
+with classification, format details, and decoder tool references.
 
 Usage:
   python3 file_index.py gamedata/            # Full index
@@ -97,7 +97,7 @@ CATEGORIES = {
     },
     'sound': {
         'desc': 'Sound/audio data',
-        'tool': None,
+        'tool': 'sound_decoder.py',
         'files': {'FREQ'},
         'prefixes': ['SN'],
     },
@@ -140,6 +140,8 @@ def classify_file(name_no_ext: str, ext: str) -> str:
         return 'animation'
     if ext == '.HNM':
         return 'video'
+    if ext == '.VOC':
+        return 'sound'
     if ext == '.AGD':
         return 'music'  # AdLib Gold variant
     if ext == '.M32':

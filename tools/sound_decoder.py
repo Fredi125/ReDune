@@ -2,9 +2,9 @@
 """
 Dune 1992 Sound File Decoder
 
-Decodes sound effects from HSQ-compressed Creative Voice File (VOC) format.
-The game uses 6 sound effect files (SN1-SN4, SN6, SNA) containing Sound
-Blaster digitized audio.
+Decodes sound effects from Creative Voice File (VOC) format.
+The game uses 10 sound effect files: 6 HSQ-compressed (SN1-SN4, SN6, SNA)
+and 4 uncompressed VOC (SN5, SN7-SN9). Auto-detects HSQ vs raw VOC.
 
 VOC file structure:
   Header (26 bytes):
@@ -18,23 +18,28 @@ VOC file structure:
       uint8    type (0x01)
       uint24   length (3 bytes LE, includes sr+codec bytes)
       uint8    sample_rate_byte → rate = 1000000/(256-byte)
-      uint8    codec (0x00 = 8-bit unsigned PCM)
+      uint8    codec (0x00 = 8-bit unsigned PCM, 0x01 = 4-bit ADPCM)
       bytes    sample data (length-2 bytes)
+    Block type 0x03: Silence
     Block type 0x06: Repeat marker
     Block type 0x07: End repeat
     Block type 0x00: Terminator
 
 Sound effects:
-  SN1.HSQ - Worm sound / sandstorm
-  SN2.HSQ - Ornithopter engine
-  SN3.HSQ - Spice harvester
-  SN4.HSQ - Short effect (click/beep)
-  SN6.HSQ - Complex multi-part effect
-  SNA.HSQ - Ambient sound
+  SN1.HSQ - Worm sound / sandstorm (10,416 Hz, looped)
+  SN2.HSQ - Ornithopter engine (12,658 Hz)
+  SN3.HSQ - Spice harvester (6,756 Hz, looped)
+  SN4.HSQ - Short effect / click (14,285 Hz)
+  SN5.VOC - Wind / ambient (5,025 Hz, looped)
+  SN6.HSQ - Complex multi-part effect (8,928 Hz)
+  SN7.VOC - Rhythmic effect (8,928 Hz, looped)
+  SN8.VOC - Deep rumble (4,000 Hz, looped)
+  SN9.VOC - Short burst (7,407 Hz)
+  SNA.HSQ - Ambient sound (7,692 Hz, looped)
 
 Usage:
-  python3 sound_decoder.py gamedata/SN*.HSQ           # Analyze all sound files
-  python3 sound_decoder.py gamedata/SN1.HSQ --wav DIR  # Export to WAV
+  python3 sound_decoder.py gamedata/SN*.HSQ gamedata/SN*.VOC  # All sound files
+  python3 sound_decoder.py gamedata/SN1.HSQ --wav DIR          # Export to WAV
 """
 
 import argparse
@@ -246,7 +251,8 @@ def main():
             continue
 
         raw = open(filepath, 'rb').read()
-        if args.raw:
+        if args.raw or raw[:20] == VOC_MAGIC:
+            # Already a VOC file (raw or .VOC extension)
             data = raw
         else:
             try:

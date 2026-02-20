@@ -387,7 +387,7 @@ Reference: `tools/command_decoder.py`
 ## SN*.HSQ (Creative Voice Files)
 
 Sound Blaster digitized audio in Creative Voice File (VOC) format.
-6 files: SN1-SN4, SN6, SNA.
+10 files: 6 HSQ-compressed (SN1-SN4, SN6, SNA), 4 uncompressed (SN5, SN7-SN9).
 
 ### VOC Header (26 bytes)
 ```
@@ -412,19 +412,23 @@ Block header: `type` (1 byte) + `length` (24-bit LE, 3 bytes).
 
 **Sound data block** (type 0x01):
 - `sr_byte`: sample rate = `1000000 / (256 - sr_byte)`
-- `codec`: 0x00 = 8-bit unsigned PCM
+- `codec`: 0x00 = 8-bit unsigned PCM, 0x01 = 4-bit Creative ADPCM
 - Sample data: `length - 2` bytes
 
 ### Sound Effects
 
-| File | Rate (Hz) | Duration | Blocks | Description |
-|------|-----------|----------|--------|-------------|
-| SN1.HSQ | 10,416 | 1.82s | 3 (repeat ∞) | Worm / sandstorm |
-| SN2.HSQ | 12,658 | 1.54s | 1 | Ornithopter engine |
-| SN3.HSQ | 6,756 | 2.91s | 1 (repeat ∞) | Spice harvester |
-| SN4.HSQ | 14,285 | 0.65s | 1 | Click/beep |
-| SN6.HSQ | 8,928 | 2.34s | 2 (repeat 30+5) | Multi-part effect |
-| SNA.HSQ | 7,692 | 2.48s | 2 (repeat ∞) | Ambient sound |
+| File | Rate (Hz) | Duration | Blocks | Codec | Description |
+|------|-----------|----------|--------|-------|-------------|
+| SN1.HSQ | 10,416 | 1.82s | 3 (repeat ∞) | PCM8 | Worm / sandstorm |
+| SN2.HSQ | 12,658 | 1.54s | 1 | PCM8 | Ornithopter engine |
+| SN3.HSQ | 6,756 | 2.91s | 1 (repeat ∞) | PCM8 | Spice harvester |
+| SN4.HSQ | 14,285 | 0.65s | 1 | PCM8 | Click/beep |
+| SN5.VOC | 5,025 | 3.91s | 1 (repeat ∞) | PCM8 | Wind / ambient |
+| SN6.HSQ | 8,928 | 2.34s | 2 (repeat 30+5) | PCM8 | Multi-part effect |
+| SN7.VOC | 8,928 | 1.52s | 2 (repeat 10) | ADPCM | Rhythmic effect |
+| SN8.VOC | 4,000 | 4.94s | 2 (repeat 10) | PCM8 | Deep rumble |
+| SN9.VOC | 7,407 | 0.55s | 1 | PCM8 | Short burst |
+| SNA.HSQ | 7,692 | 2.48s | 2 (repeat ∞) | PCM8 | Ambient sound |
 
 Reference: `tools/sound_decoder.py`
 
