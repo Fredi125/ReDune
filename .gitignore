@@ -1,0 +1,14 @@
+# Reference repos (cloned for cross-referencing, not project code)
+refs/
+
+# Game data files (copyrighted Cryo Interactive assets)
+gamedata/
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+
+# Temp/output
+/tmp/
+*.bak
