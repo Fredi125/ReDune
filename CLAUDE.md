@@ -31,7 +31,8 @@ dune1992-re/
 │   ├── command_decoder.py   ← COMMAND.HSQ string table decoder
 │   ├── hnm_decoder.py       ← HNM video file analyzer
 │   ├── lop_decoder.py       ← LOP background animation decoder
-│   ├── herad_decoder.py     ← HERAD AdLib/OPL2 music decoder
+│   ├── herad_decoder.py     ← HERAD AdLib/OPL2 music decoder (+ MIDI export)
+│   ├── file_index.py        ← Game file catalog (262 files, 18 categories)
 │   └── hsq_decompress.py   ← HSQ file decompressor
 ├── ui/                 ← Web UI
 │   └── save_explorer.jsx   ← React save file explorer
