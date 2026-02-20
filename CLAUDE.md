@@ -21,10 +21,17 @@ dune1992-re/
 │   ├── condit_decompiler.py ← CONDIT VM bytecode decompiler
 │   ├── condit_recompiler.py ← CONDIT expression → bytecode compiler
 │   ├── dialogue_decompiler.py ← DIALOGUE.HSQ bytecode decompiler
+│   ├── dialogue_browser.py  ← CONDIT×DIALOGUE×PHRASE cross-reference browser
 │   ├── phrase_dumper.py     ← PHRASE*.HSQ text string extractor
 │   ├── npc_smuggler_decoder.py ← NPC & smuggler save data decoder
 │   ├── sal_decoder.py       ← SAL scene layout decoder
 │   ├── bin_decoder.py       ← BIN file decoder (font, tables, anim)
+│   ├── sprite_decoder.py    ← Sprite/graphics HSQ decoder (palettes, pixels)
+│   ├── map_decoder.py       ← MAP.HSQ world map decoder
+│   ├── command_decoder.py   ← COMMAND.HSQ string table decoder
+│   ├── hnm_decoder.py       ← HNM video file analyzer
+│   ├── lop_decoder.py       ← LOP background animation decoder
+│   ├── herad_decoder.py     ← HERAD AdLib/OPL2 music decoder
 │   └── hsq_decompress.py   ← HSQ file decompressor
 ├── ui/                 ← Web UI
 │   └── save_explorer.jsx   ← React save file explorer
@@ -104,19 +111,20 @@ python3 tools/condit_decompiler.py samples/CONDIT.HSQ --chains
 - [x] HSQ compressor → `lib/compression.py` (186/186 files roundtrip)
 - [x] Analyze PHRASE*.HSQ → `tools/phrase_dumper.py`
 - [x] Decode BIN files (DNCHAR font, TABLAT, VER, THE_END) → `tools/bin_decoder.py`
+- [x] Decode sprite/graphics HSQ format → `tools/sprite_decoder.py` (palettes, pixel data)
+- [x] Decode MAP.HSQ world map → `tools/map_decoder.py` (320×152 tiles, regions, locations)
+- [x] Decode COMMAND.HSQ string table → `tools/command_decoder.py` (all 186 HSQ files classified)
+- [x] Analyze HNM video files → `tools/hnm_decoder.py` (chunk structure, frame analysis)
+- [x] Decode LOP background animations → `tools/lop_decoder.py` (4-phase PackBits, 152×190 blit)
+- [x] Integrate CONDIT×DIALOGUE×PHRASE → `tools/dialogue_browser.py` (cross-reference browser)
+- [x] HERAD music format decoder → `tools/herad_decoder.py` (10 AdLib/OPL2 tracks, event parsing)
 
 ## Pending Work
 
-### Medium Priority
-- [ ] Decode MAP.HSQ (world map data)
-- [ ] Decode sprite/graphics HSQ format (palettes, pixel data)
-- [ ] LOP animation format decoder
-- [ ] Integrate CONDIT with DIALOGUE system (cross-reference condition indices)
-
 ### Low Priority
-- [ ] HERAD music format decoder
-- [ ] HNM video frame extractor
+- [ ] HNM video frame pixel extraction (frame decoding beyond chunk analysis)
 - [ ] Complete game state editor (troops + NPCs + smugglers + conditions)
+- [ ] HERAD → MIDI converter (for playback outside the game)
 
 ## External References
 
