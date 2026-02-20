@@ -32,6 +32,7 @@ dune1992-re/
 │   ├── hnm_decoder.py       ← HNM video file analyzer
 │   ├── lop_decoder.py       ← LOP background animation decoder
 │   ├── herad_decoder.py     ← HERAD AdLib/OPL2 music decoder (+ MIDI export)
+│   ├── sound_decoder.py     ← VOC sound effect decoder (+ WAV export)
 │   ├── file_index.py        ← Game file catalog (262 files, 18 categories)
 │   └── hsq_decompress.py   ← HSQ file decompressor
 ├── ui/                 ← Web UI
@@ -120,6 +121,9 @@ python3 tools/condit_decompiler.py samples/CONDIT.HSQ --chains
 - [x] Integrate CONDIT×DIALOGUE×PHRASE → `tools/dialogue_browser.py` (cross-reference browser)
 - [x] HERAD music format decoder → `tools/herad_decoder.py` (10 AdLib/OPL2 tracks, event parsing)
 - [x] HERAD → MIDI converter → `tools/herad_decoder.py --midi` (all 10 tracks exportable)
+- [x] Decode VOC sound effects → `tools/sound_decoder.py` (6 SN*.HSQ files, WAV export)
+- [x] Build game file catalog → `tools/file_index.py` (262 files, 18 categories)
+- [x] Comprehensive format guide → `docs/file_formats.md` (all formats documented)
 
 ## Pending Work
 

@@ -240,6 +240,29 @@ Reference: `tools/save_editor.py`, `tools/npc_smuggler_decoder.py`
 
 ---
 
+## MAP.HSQ (World Map Terrain)
+
+50,681 bytes decompressed (`RES_MAP_SIZE = 0x0C5F9`).
+
+Terrain/region data for the flat map and globe views. Each byte encodes terrain
+type used for rendering and gameplay (spice fields, sietches, rocky terrain, sand).
+
+Accessed linearly for the flat map, and via TABLAT.BIN latitude lookup for the
+globe projection.
+
+### Related ASM Functions
+- `sub_1B58B`: map access using TABLAT latitude offsets
+- `sub_1B427`: map data conversion (2-bit extraction)
+- `sub_1B473`: map region overlay (2-bit bitfield insert)
+
+### Related Resources
+- **TABLAT.BIN**: 99 × 8-byte latitude lookup table
+- **GLOBDATA.HSQ**: globe rendering parameters
+
+Reference: `tools/map_decoder.py`
+
+---
+
 ## GLOBDATA.HSQ (Globe Rendering Data)
 
 16,091 bytes decompressed. Data for the 3D globe/world map view.
@@ -328,13 +351,53 @@ Reference: `tools/command_decoder.py`
 ## SN*.HSQ (Creative Voice Files)
 
 Sound Blaster digitized audio in Creative Voice File (VOC) format.
-6 files: SN1-SN4, SN6, SNA. Header starts with `"Creative Voice File"`.
+6 files: SN1-SN4, SN6, SNA.
+
+### VOC Header (26 bytes)
+```
+Offset  Size  Field
+0x00    20    Magic: "Creative Voice File\x1A"
+0x14    2     Header size (uint16 LE, always 0x001A = 26)
+0x16    2     Version (uint16 LE, typically 0x010A = 1.10)
+0x18    2     Version check (uint16 LE, 0x1129 + version)
+```
+
+### VOC Data Blocks
+
+| Type | Name | Data | Description |
+|------|------|------|-------------|
+| 0x01 | Sound data | sr_byte + codec + samples | Digitized audio |
+| 0x03 | Silence | length (uint16 LE) + sr_byte | Silent gap |
+| 0x06 | Repeat start | count (uint16 LE) | Loop begin (0xFFFF = infinite) |
+| 0x07 | Repeat end | (empty) | Loop end |
+| 0x00 | Terminator | — | End of file |
+
+Block header: `type` (1 byte) + `length` (24-bit LE, 3 bytes).
+
+**Sound data block** (type 0x01):
+- `sr_byte`: sample rate = `1000000 / (256 - sr_byte)`
+- `codec`: 0x00 = 8-bit unsigned PCM
+- Sample data: `length - 2` bytes
+
+### Sound Effects
+
+| File | Rate (Hz) | Duration | Blocks | Description |
+|------|-----------|----------|--------|-------------|
+| SN1.HSQ | 10,416 | 1.82s | 3 (repeat ∞) | Worm / sandstorm |
+| SN2.HSQ | 12,658 | 1.54s | 1 | Ornithopter engine |
+| SN3.HSQ | 6,756 | 2.91s | 1 (repeat ∞) | Spice harvester |
+| SN4.HSQ | 14,285 | 0.65s | 1 | Click/beep |
+| SN6.HSQ | 8,928 | 2.34s | 2 (repeat 30+5) | Multi-part effect |
+| SNA.HSQ | 7,692 | 2.48s | 2 (repeat ∞) | Ambient sound |
+
+Reference: `tools/sound_decoder.py`
 
 ---
 
 ## FREQ.HSQ (Frequency Sample)
 
 Sound frequency calibration sample. Starts with `"Sample test to calc freq"`.
+Raw PCM data (unsigned 8-bit) used for sound card frequency detection.
 
 ---
 
@@ -374,60 +437,154 @@ Start with x86 JMP instructions (`E9` near jump, `EB` short jump).
 
 ---
 
-## HNM4 (Video)
+## HNM (Video)
 
-Cryo Interactive proprietary video format (`*.HNM`).
+Cryo Interactive proprietary video format (`*.HNM`). Used for intro, cutscenes, and ending.
 
-- Resolution: 320×152 pixels
-- Frame offset table in header
-- Chunk types: `PL` (palette), `SD` (sound), `VD` (video delta)
+### Structure
+
+Chunk-based format. Each chunk starts with `uint16 LE chunk_size`.
+
+**Chunk 0 (header)**:
+- VGA palette data (same format as sprite files: start, count, RGB×3)
+- Terminated by `0xFFFF`
+- Followed by frame offset table
+
+**Subsequent chunks (frames)**: sub-chunks with 2-byte ASCII tags:
+
+| Tag | Type | Description |
+|-----|------|-------------|
+| `sd` | Sound | Digitized audio data |
+| `pl` | Palette | Palette update |
+| `pt` | Unknown | — |
+| `kl` | Unknown | — |
+| other | Video | Frame data: bits[8:0]=width, byte[2]&0xFF=height, byte[3]=mode |
+
+**Video frame decompression**:
+- Checksum 0xAB (171): HSQ-style LZ77 decompression
+- Checksum 0xAD (173): Codebook-based with RLE
+
+Resolution: 320×200 (video area 320×152 + status bar).
+
+Reference: `tools/hnm_decoder.py`, OpenRakis `HNMExtractor.cpp`
 
 ---
 
 ## LOP (Loop Animation)
 
 Ambient animation loops for location backgrounds (`*.LOP`). 6 files.
+4 sections per file likely correspond to time-of-day phases (dawn, day, dusk, night).
 
 ### Header (24 bytes)
 ```
-uint16 LE:  header size (always 0x0018 = 24)
-uint16 LE:  marker (always 0xFFFF)
-5 × uint32 LE:  section offsets (4 frame sections + end)
+Offset  Size  Field
+0x00    2     Header size (uint16 LE, always 0x0018 = 24)
+0x02    2     Marker (uint16 LE, always 0xFFFF)
+0x04    4     Section 0 offset (uint32 LE, relative to header end)
+0x08    4     Section 1 offset
+0x0C    4     Section 2 offset
+0x10    4     Section 3 offset
+0x14    4     End offset (= total data size after header)
 ```
 
-### Sections
-- **Sections 0-2**: Animation frame data (~8-15 KB each)
-- **Section 3**: Metadata block (always 24 bytes, animation parameters)
+### Section Structure (per section)
+```
+Offset  Size  Field
++0x00   2     Section size (uint16 LE, including this field)
++0x02   1     X offset (blit position on 320×200 screen)
++0x03   1     Y offset
++0x04   1     Width (pixels)
++0x05   1     Mode (0xFE=opaque, 0xFF=transparent-zero)
++0x06   1     Flags (bit 7: PackBits compressed)
++0x07   1     Height (pixels)
++0x08   1     Reserved (always 0x00)
++0x09   2     Data size (= section_size - 6)
++0x0B   N     Compressed pixel data
+```
+
+### PackBits Compression
+
+Per scanline (width pixels):
+- `cmd & 0x80`: RLE — repeat next byte `(257 - cmd)` times
+- Else: literal — copy `(cmd + 1)` bytes as-is
 
 ### Files
 | File | Size | Description |
 |------|------|-------------|
-| MNT1.LOP | 38,315 | Mountain pass 1 |
-| MNT2.LOP | 38,331 | Mountain pass 2 |
-| MNT3.LOP | 58,419 | Mountain pass 3 |
-| MNT4.LOP | 58,189 | Mountain pass 4 |
-| PALACE.LOP | 34,965 | Palace exterior |
-| SIET.LOP | 35,616 | Sietch exterior |
+| MNT1.LOP | 38,315 | Mountain sietch type 1 |
+| MNT2.LOP | 38,331 | Mountain sietch type 2 |
+| MNT3.LOP | 58,419 | Mountain sietch type 3 |
+| MNT4.LOP | 58,189 | Mountain sietch type 4 |
+| PALACE.LOP | 34,965 | Arrakeen Palace exterior |
+| SIET.LOP | 35,616 | Generic sietch exterior |
+
+Reference: `tools/lop_decoder.py`
 
 ---
 
 ## HERAD (Music)
 
-Cryo's proprietary OPL2/AdLib music format.
+Cryo's proprietary OPL2/AdLib music format ("Hérault").
 
-### Header
+### Header (50 bytes, 0x00-0x31)
 ```
-uint16 LE at offset 0:  file size
-bytes 2-3:              0x32 0x00 (HERAD signature = 50)
-remaining header:       track offset table (uint16 LE pairs)
+Offset  Size  Field
+0x00    2     Instrument block offset (uint16 LE)
+0x02    2     Track 0 offset (always 0x0032 = 50, also signature)
+0x04    2+    Track 1..N offsets (uint16 LE, 0x0000 = end)
+...           Zero padding to 0x2C
+0x2C    2     Number of instruments (uint16 LE)
+0x2E    2     Param2 — tempo/speed related (uint16 LE)
+0x30    2     Param3 — loop count (uint16 LE)
 ```
 
-10 HERAD files in game data: ARRAKIS, BAGDAD, CRYOMUS, MORNING, SEKENCE,
-SIETCHM, WARSONG, WATER, WORMINTR, WORMSUIT.
+**Identification**: Word at offset 2 is always `0x0032` (= 50, the data start offset).
+
+### Track Data (offset 0x32 to instrument_offset)
+
+Each track begins with a 2-byte header:
+- Byte 0: initial delay (single byte, typically 0x00-0x7F)
+- Byte 1: voice assignment (0x04 on track 0, 0xFF on tracks 1-8)
+
+### Event Stream (MIDI-like)
+
+| Status | Name | Data | Description |
+|--------|------|------|-------------|
+| 0x90 | Note On | note, velocity | Start playing note |
+| 0x80 | Note Off | note, velocity | Stop playing note |
+| 0xC0 | Program Change | instrument | Select OPL2 instrument |
+| 0xD0 | Control | param, value | Parameter change |
+| 0xFF | Voice/Sync | — | Channel marker |
+
+**Delta time encoding**: If next byte is a status byte (0x80/0x90/0xC0/0xD0/0xFF),
+implicit delta = 0. Otherwise, read VLQ-encoded delta time before the status byte.
+VLQ uses standard bit-7 continuation; only 0x81-0x8F appear as continuations in practice.
+
+### Instrument Definitions (at instrument_offset)
+
+OPL2/FM synthesis register data, 11+ bytes per instrument:
+modulator registers, carrier registers, feedback/connection byte.
+
+### Music Files
+
+| File | Size | Tracks | Notes | Instruments | Description |
+|------|------|--------|-------|-------------|-------------|
+| ARRAKIS.HSQ | 6,330 | 9 | 3,637 | 6 | Main Arrakis theme |
+| BAGDAD.HSQ | 6,764 | 9 | 3,954 | 8 | Smuggler theme |
+| CRYOMUS.HSQ | 786 | 9 | 308 | 3 | Cryo logo jingle |
+| MORNING.HSQ | 6,378 | 9 | 3,466 | 6 | Dawn theme |
+| SEKENCE.HSQ | 7,036 | 9 | 3,656 | 8 | Cutscene music |
+| SIETCHM.HSQ | 3,804 | 9 | 2,254 | 5 | Sietch interior |
+| WARSONG.HSQ | 4,126 | 9 | 2,748 | 6 | Battle music |
+| WATER.HSQ | 5,740 | 9 | 2,788 | 6 | Ecology theme |
+| WORMINTR.HSQ | 3,052 | 9 | 1,766 | 5 | Worm encounter |
+| WORMSUIT.HSQ | 7,476 | 9 | 4,056 | 6 | Worm riding |
 
 Three hardware variants (non-HSQ):
 - `.AGD` — Tandy/PCjr
 - `.M32` — Roland MT-32/LAPC-I MIDI
+
+Reference: `tools/herad_decoder.py` (analysis + MIDI export via `--midi DIR`)
 
 ---
 
@@ -456,3 +613,28 @@ Offset  Name                 Size  Description
 0x57    WindtrapCount         byte  Windtrap installations
 0x80    SietchStatusArray    array Per-sietch flags
 ```
+
+---
+
+## Tool Reference
+
+| Tool | Formats | Description |
+|------|---------|-------------|
+| `tools/hsq_decompress.py` | HSQ | Decompress any HSQ file |
+| `tools/save_editor.py` | DUNE*.SAV | Read/write save files |
+| `tools/condit_decompiler.py` | CONDIT.HSQ | Decompile condition bytecodes |
+| `tools/condit_recompiler.py` | CONDIT.HSQ | Recompile expressions to bytecodes |
+| `tools/dialogue_decompiler.py` | DIALOGUE.HSQ | Decompile dialogue bytecodes |
+| `tools/dialogue_browser.py` | CONDIT+DIALOGUE+PHRASE | Cross-reference dialogue pipeline |
+| `tools/phrase_dumper.py` | PHRASE*.HSQ | Dump dialogue text strings |
+| `tools/command_decoder.py` | COMMAND*.HSQ | Decode UI string tables |
+| `tools/sprite_decoder.py` | 133 sprite HSQ files | Decode/export sprite graphics |
+| `tools/map_decoder.py` | MAP.HSQ | Analyze world map terrain |
+| `tools/sal_decoder.py` | *.SAL | Decode scene assembly layouts |
+| `tools/bin_decoder.py` | *.BIN | Decode binary data files |
+| `tools/hnm_decoder.py` | *.HNM | Analyze HNM video files |
+| `tools/lop_decoder.py` | *.LOP | Decode loop animations |
+| `tools/herad_decoder.py` | HERAD music HSQ | Decode music + MIDI export |
+| `tools/sound_decoder.py` | SN*.HSQ | Decode VOC sounds + WAV export |
+| `tools/npc_smuggler_decoder.py` | DUNE*.SAV | Decode NPC/smuggler data |
+| `tools/file_index.py` | All | Classify all 262 game files |
