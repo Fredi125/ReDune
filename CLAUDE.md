@@ -34,6 +34,7 @@ dune1992-re/
 │   ├── herad_decoder.py     ← HERAD AdLib/OPL2 music decoder (+ MIDI export)
 │   ├── sound_decoder.py     ← VOC sound effect decoder (+ WAV export)
 │   ├── dat_decoder.py       ← DUNE.DAT archive decoder (list/extract files)
+│   ├── globdata_decoder.py  ← GLOBDATA.HSQ decoder (gradients + globe projection)
 │   ├── file_index.py        ← Game file catalog (262 files, 18 categories)
 │   └── hsq_decompress.py   ← HSQ file decompressor
 ├── ui/                 ← Web UI

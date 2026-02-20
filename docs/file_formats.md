@@ -301,10 +301,70 @@ Reference: `tools/map_decoder.py`
 
 ## GLOBDATA.HSQ (Globe Rendering Data)
 
-16,091 bytes decompressed. Data for the 3D globe/world map view.
+16,091 bytes decompressed. Dual-purpose data resource containing polygon
+shading tables and globe projection mappings.
 
-Contains coordinate lookup tables, region boundaries, and rendering parameters
-for the spinning globe animation in the game's map screen.
+### Part 1: Gradient Tables (0x0000-0x0B34, 2869 bytes)
+
+55 variable-length gradient tables for polygon shading fills.
+
+```
+Table format:
+  Byte 0:     Marker byte (table length = 256 - marker)
+  Bytes 1-N:  Incrementing color indices (gradient ramp)
+```
+
+Marker range: 0xBF-0xF1 (table sizes 14-64 entries). Base colors 0x00-0x56.
+Terminated by 0xFF sentinel bytes.
+
+Used by `_sub_13BE9_SAL_polygon` for shaded polygon fills in SAL scenes.
+The polygon renderer selects a table by color, then indexes into it by
+shade level to produce smooth gradient-filled regions.
+
+### Part 2: Globe Projection (0x0B35-0x3EDA, 13222 bytes)
+
+Globe latitude scanline data for the spinning world map view.
+
+```
+Layout:
+  0x0B35-0x0CDA:  422 bytes zero prefix (padding)
+  0x0CDB-0x3EDA:  64 × 200-byte scanline blocks
+```
+
+Each 200-byte block represents one latitude line (equator to pole;
+the other hemisphere is mirrored):
+
+```
+Block structure (200 bytes):
+  Bytes 0-97:   98-byte longitude ramp (x → longitude coordinate mapping)
+  Byte 98:      0x00 separator
+  Bytes 99-199: 101-byte terrain/shade data (99 values + 2 zero padding)
+```
+
+**Longitude ramp**: Maps screen x-pixel positions to globe longitude
+coordinates. At the equator (block 0), the mapping is linear (02, 04, 06,
+..., C4). At higher latitudes, values advance non-linearly due to sphere
+curvature, and the maximum longitude decreases (0xC4 at equator → 0x0E
+at pole).
+
+**Terrain data**: Shade/terrain type indices for each longitude position
+at this latitude, looked up during rendering to determine pixel colors
+(cross-referenced with the gradient tables from Part 1).
+
+### Buffer Reuse
+
+At runtime, `RESOURCE_GLOBDATA` is also used for map terrain histograms
+(256 × uint16 LE counting byte values in MAP.HSQ), overwriting the
+loaded file content. This histogram is used for sietch terrain frequency
+calculations.
+
+### Related ASM Functions
+- `sub_1B8A7`: loads GLOBDATA.HSQ (resource index 0x92)
+- `sub_1BA75`: globe rendering setup (latitude calculations)
+- `gfx_vtable_func_29`: VGA driver globe rendering (called with TABLAT + GLOBDATA + MAP)
+- `_sub_13BE9_SAL_polygon`: polygon shading using gradient tables
+
+Reference: `tools/globdata_decoder.py`
 
 ---
 
