@@ -116,14 +116,21 @@ def hsq_get_sizes(data: bytes) -> tuple:
     """
     Read HSQ header without decompressing.
 
+    Header layout (6 bytes):
+      uint16 LE: decompressed size
+      uint8:     checksum byte
+      uint16 LE: compressed size (== file size)
+      uint8:     checksum byte (copy)
+
     Returns:
-        (decompressed_size, compressed_size)
+        (decompressed_size, compressed_size, checksum)
     """
     if len(data) < 6:
         raise ValueError("Not an HSQ file (too short)")
     decomp = struct.unpack_from('<H', data, 0)[0]
+    checksum = data[2]
     comp = struct.unpack_from('<H', data, 3)[0]
-    return (decomp, comp)
+    return (decomp, comp, checksum)
 
 
 # =============================================================================
