@@ -409,6 +409,91 @@ def show_stats(filepaths: list):
 
 
 # =============================================================================
+# MIDI EXPORT
+# =============================================================================
+
+def write_midi_vlq(value: int) -> bytes:
+    """Encode a value as MIDI variable-length quantity."""
+    if value < 0:
+        value = 0
+    buf = [value & 0x7F]
+    value >>= 7
+    while value > 0:
+        buf.append(0x80 | (value & 0x7F))
+        value >>= 7
+    buf.reverse()
+    return bytes(buf)
+
+
+def export_midi(filepath: str, data: bytes, outpath: str, ticks_per_quarter: int = 120):
+    """Convert HERAD music to Standard MIDI File (format 1).
+
+    Maps HERAD tracks to MIDI channels 0-8. OPL2 instruments are mapped
+    to General MIDI program numbers for approximate playback.
+    """
+    info = parse_herad(data)
+
+    # MIDI header: format 1, N tracks, ticks per quarter note
+    n_midi_tracks = info['n_tracks']
+    header = b'MThd' + struct.pack('>IHhH', 6, 1, n_midi_tracks, ticks_per_quarter)
+
+    tracks_data = []
+
+    for ti, track in enumerate(info['tracks']):
+        events = parse_track_events(track['data'])
+        channel = ti if ti < 16 else 15  # MIDI channels 0-15
+
+        midi_events = bytearray()
+
+        for delta, etype, edata in events:
+            vlq = write_midi_vlq(delta)
+
+            if etype == 'NOTE_ON':
+                note = min(edata[0], 127)
+                vel = min(edata[1], 127) if edata[1] > 0 else 64
+                midi_events.extend(vlq)
+                midi_events.extend(bytes([0x90 | channel, note, vel]))
+
+            elif etype == 'NOTE_OFF':
+                note = min(edata[0], 127)
+                midi_events.extend(vlq)
+                midi_events.extend(bytes([0x80 | channel, note, 64]))
+
+            elif etype == 'PROG_CHG':
+                prog = min(edata[0], 127)
+                midi_events.extend(vlq)
+                midi_events.extend(bytes([0xC0 | channel, prog]))
+
+            elif etype == 'CONTROL':
+                # Map HERAD control params to MIDI CC where reasonable
+                param = min(edata[0], 127)
+                value = min(edata[1], 127)
+                midi_events.extend(vlq)
+                midi_events.extend(bytes([0xB0 | channel, param, value]))
+
+            elif etype == 'VOICE':
+                # Skip voice/sync markers — just consume the delta
+                if delta > 0:
+                    midi_events.extend(vlq)
+                    midi_events.extend(bytes([0xB0 | channel, 0x7B, 0]))  # All Notes Off
+
+        # End of Track meta event
+        midi_events.extend(b'\x00\xFF\x2F\x00')
+
+        track_chunk = b'MTrk' + struct.pack('>I', len(midi_events)) + bytes(midi_events)
+        tracks_data.append(track_chunk)
+
+    midi_data = header + b''.join(tracks_data)
+
+    with open(outpath, 'wb') as f:
+        f.write(midi_data)
+
+    fname = os.path.basename(filepath)
+    print(f"Exported {fname} → {outpath} ({len(midi_data):,} bytes, "
+          f"{n_midi_tracks} tracks, {ticks_per_quarter} TPQ)")
+
+
+# =============================================================================
 # MAIN
 # =============================================================================
 
@@ -425,6 +510,8 @@ def main():
                    help='Dump events for track N')
     p.add_argument('--stats', action='store_true',
                    help='Show summary statistics for all files')
+    p.add_argument('--midi', type=str, default=None, metavar='DIR',
+                   help='Export to MIDI files in DIR')
     args = p.parse_args()
 
     if args.stats:
@@ -456,7 +543,12 @@ def main():
 
         data = bytes(data)
 
-        if args.events is not None:
+        if args.midi:
+            os.makedirs(args.midi, exist_ok=True)
+            base = os.path.splitext(os.path.basename(filepath))[0]
+            outpath = os.path.join(args.midi, f"{base}.mid")
+            export_midi(filepath, data, outpath)
+        elif args.events is not None:
             show_events(filepath, data, args.events)
         elif args.tracks:
             show_tracks(filepath, data)

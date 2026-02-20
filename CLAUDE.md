@@ -118,13 +118,13 @@ python3 tools/condit_decompiler.py samples/CONDIT.HSQ --chains
 - [x] Decode LOP background animations → `tools/lop_decoder.py` (4-phase PackBits, 152×190 blit)
 - [x] Integrate CONDIT×DIALOGUE×PHRASE → `tools/dialogue_browser.py` (cross-reference browser)
 - [x] HERAD music format decoder → `tools/herad_decoder.py` (10 AdLib/OPL2 tracks, event parsing)
+- [x] HERAD → MIDI converter → `tools/herad_decoder.py --midi` (all 10 tracks exportable)
 
 ## Pending Work
 
 ### Low Priority
 - [ ] HNM video frame pixel extraction (frame decoding beyond chunk analysis)
 - [ ] Complete game state editor (troops + NPCs + smugglers + conditions)
-- [ ] HERAD → MIDI converter (for playback outside the game)
 
 ## External References
 
