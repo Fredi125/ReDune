@@ -249,6 +249,131 @@ for the spinning globe animation in the game's map screen.
 
 ---
 
+## Sprite Graphics (133 HSQ files)
+
+Character portraits, backgrounds, UI elements, and game sprites.
+Format based on OpenRakis `dunespr.c`.
+
+### File Structure (decompressed)
+```
+uint16 LE at offset 0 → pointer to offset table (= end of palette data)
+Palette data:       bytes 2..pal_end (VGA color chunks)
+Offset table:       N × uint16 LE at pal_end (sprite offsets relative to pal_end)
+Sprite data:        4-byte headers + 4-bit bipixel pixel data
+```
+
+### Palette Chunks
+```
+start_index (byte), count (byte), count × 3 bytes (R, G, B, 6-bit VGA 0-63)
+Terminator: 0xFF 0xFF
+```
+
+### Sprite Header (4 bytes)
+```
+byte 0:  width_low
+byte 1:  bit7 = compression flag, bits 6-0 = width_high
+byte 2:  height
+byte 3:  palette_offset (base color index)
+```
+Width = `width_low | (width_high << 8)` (15-bit).
+
+### Pixel Data
+4-bit color indices packed as bipixels (2 pixels per byte):
+- Low nibble = first pixel, high nibble = second pixel
+- Final color = `palette_offset + nibble_value`
+
+**Uncompressed**: pairs of bytes → 4 pixels per pair, scanline wrap at width.
+
+**RLE compressed**: signed repetition codes with 4-byte scanline alignment:
+- Negative code: repeat 1 bipixel `(-code + 1)` times
+- Positive code: read `(code + 1)` literal bipixels
+
+### File Categories
+- **Backgrounds** (320×152): DH*, DN2*, DP*, DS*, DV*, DF*, INT*, VG*, VIL*, etc.
+- **Portraits**: CHAN (42×26 thumbs + 120×94 main), EMPR, FEYD, GURN, STIL, etc.
+- **UI/Icons**: GENERIC (91 sprites), ICONES (77), ONMAP (155×15x15)
+- **Scenes**: BACK (320×152), BOOK, FRESK, FRM1-3, MIRROR, STARS
+
+Reference: `tools/sprite_decoder.py`, OpenRakis `dunespr.c`
+
+---
+
+## COMMAND*.HSQ (String Tables)
+
+UI text strings for the game interface. 7 language variants (COMMAND1-7).
+
+### Structure
+```
+Offset table: N × uint16 LE (N = first_offset / 2)
+String data:  0xFF-terminated ASCII strings
+```
+
+### Content (COMMAND1 = English, 333 strings)
+```
+  0-22:    Location names (Arrakeen, Carthag, Tabr, Tuek, etc.)
+  23-46:   Job descriptions (Spice Mining, Military Training, etc.)
+  47-66:   Status format templates (with inline variable placeholders)
+  67-74:   Location type labels (Sietch, Palace, Village, Fort)
+  75-80:   Battle/troop UI commands
+  241:     Copy protection question
+  259-301: Character names (Paul, Leto, Jessica, Stilgar, Chani, etc.)
+  279-286: Intro story text
+  305-332: Debug/cheat menu commands
+```
+
+Reference: `tools/command_decoder.py`
+
+---
+
+## SN*.HSQ (Creative Voice Files)
+
+Sound Blaster digitized audio in Creative Voice File (VOC) format.
+6 files: SN1-SN4, SN6, SNA. Header starts with `"Creative Voice File"`.
+
+---
+
+## FREQ.HSQ (Frequency Sample)
+
+Sound frequency calibration sample. Starts with `"Sample test to calc freq"`.
+
+---
+
+## DN*.HSQ (x86 Driver Overlays)
+
+Executable code overlays loaded as hardware drivers. 10 files.
+Start with x86 JMP instructions (`E9` near jump, `EB` short jump).
+
+| File | Driver |
+|------|--------|
+| DNVGA.HSQ | VGA graphics driver |
+| DN386.HSQ | 386 protected mode driver |
+| DNADG.HSQ | AdLib Gold sound driver |
+| DNADL.HSQ | AdLib/OPL2 sound driver |
+| DNADP.HSQ | AdLib Pro driver |
+| DNMID.HSQ | MIDI driver |
+| DNPCS.HSQ | PC Speaker driver |
+| DNPCS2.HSQ | PC Speaker driver (variant) |
+| DNSBP.HSQ | Sound Blaster Pro driver |
+| DNSDB.HSQ | Sound Blaster driver |
+
+---
+
+## Complete HSQ File Classification (186 files)
+
+| Category | Count | Description |
+|----------|-------|-------------|
+| Sprite Graphics | 133 | Portraits, backgrounds, UI, animations |
+| Phrase Text | 14 | Dialogue strings (7 languages × 2 parts) |
+| HERAD Music | 10 | OPL2/AdLib music tracks |
+| x86 Drivers | 10 | Hardware driver overlays |
+| String Tables | 7 | UI text (7 language variants) |
+| Creative Voice | 6 | VOC sound effects |
+| Map Data | 3 | World map, globe data |
+| VM Bytecodes | 2 | CONDIT conditions, DIALOGUE triggers |
+| Sound Sample | 1 | Frequency calibration |
+
+---
+
 ## HNM4 (Video)
 
 Cryo Interactive proprietary video format (`*.HNM`).
@@ -261,17 +386,46 @@ Cryo Interactive proprietary video format (`*.HNM`).
 
 ## LOP (Loop Animation)
 
-Ambient animation loops referencing HNM keyframes (`*.LOP`).
+Ambient animation loops for location backgrounds (`*.LOP`). 6 files.
 
-- Shares frame offset format with HNM
-- Delta encoding: `F8 FF FF` = copy tile, `55 55` = marker
+### Header (24 bytes)
+```
+uint16 LE:  header size (always 0x0018 = 24)
+uint16 LE:  marker (always 0xFFFF)
+5 × uint32 LE:  section offsets (4 frame sections + end)
+```
+
+### Sections
+- **Sections 0-2**: Animation frame data (~8-15 KB each)
+- **Section 3**: Metadata block (always 24 bytes, animation parameters)
+
+### Files
+| File | Size | Description |
+|------|------|-------------|
+| MNT1.LOP | 38,315 | Mountain pass 1 |
+| MNT2.LOP | 38,331 | Mountain pass 2 |
+| MNT3.LOP | 58,419 | Mountain pass 3 |
+| MNT4.LOP | 58,189 | Mountain pass 4 |
+| PALACE.LOP | 34,965 | Palace exterior |
+| SIET.LOP | 35,616 | Sietch exterior |
 
 ---
 
 ## HERAD (Music)
 
-Cryo's proprietary music format. Three hardware variants:
-- `.HSQ` — OPL2/AdLib/Sound Blaster
+Cryo's proprietary OPL2/AdLib music format.
+
+### Header
+```
+uint16 LE at offset 0:  file size
+bytes 2-3:              0x32 0x00 (HERAD signature = 50)
+remaining header:       track offset table (uint16 LE pairs)
+```
+
+10 HERAD files in game data: ARRAKIS, BAGDAD, CRYOMUS, MORNING, SEKENCE,
+SIETCHM, WARSONG, WATER, WORMINTR, WORMSUIT.
+
+Three hardware variants (non-HSQ):
 - `.AGD` — Tandy/PCjr
 - `.M32` — Roland MT-32/LAPC-I MIDI
 
