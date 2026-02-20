@@ -44,33 +44,69 @@ Reference: `lib/compression.py` — `hsq_compress()`, `hsq_decompress()`
 
 ---
 
-## DIALOGUE.HSQ (Dialogue Bytecode)
+## DIALOGUE.HSQ (Dialogue Script Table)
 
-Event/dialogue condition bytecodes controlling NPC conversations and story triggers.
+Dialogue script table controlling NPC conversations. **Not a bytecode VM** — it uses
+fixed 4-byte records that reference CONDIT conditions and PHRASE text strings.
+
+4,496 bytes decompressed. 136 entries, 988 records total, 480 unique phrase IDs.
 
 ### Structure
-- **Offset table**: N × uint16 LE pointing to bytecode start positions
-  - N = first_offset / 2
-- **Bytecodes**: Condition chains evaluated by the dialogue VM
-
-### Bytecode Format
-- `00` / `02-7F` followed by byte: word variable operand (DS offset)
-- `01` followed by byte: byte variable operand (DS offset)
-- `80` followed by byte: 8-bit immediate value
-- `81-FE` followed by uint16 LE: 16-bit immediate value (tag = count)
-- `80-FE` alone: separator (pushes accumulator to stack)
-- `FF`: terminator (unwinds evaluation)
-
-### Operations (Jump table at `off_C246`)
 ```
-0: EQ  (==)    5: GE  (>=)
-1: LT  (<)     6: ADD (+)
-2: GT  (>)     7: SUB (-)
-3: NE  (!=)    8: AND (&)
-4: LE  (<=)    9: OR  (|)
+Offset table:  136 × uint16 LE → dialogue entry offsets (N = first_offset / 2)
+Data region:   Lists of 4-byte records, each terminated by 0xFFFF
 ```
 
-Reference: `tools/dialogue_decompiler.py`
+### Record Format (4 bytes)
+```
+Byte 0: Flags + Action Code
+  Bit 7 (0x80): "Already spoken" flag (set at runtime, persisted in save)
+  Bit 6 (0x40): "Repeatable" — can be shown again after being spoken
+  Bits 5-4:     Additional flags (0x20, 0x10 observed)
+  Bits 3-0:     NPC action code (0-15, index into CS:0xA107 jump table)
+
+Byte 1: NPC/Character ID
+  Low byte of the CONDIT condition index
+
+Byte 2: Condition type + Menu flag + Phrase ID (high)
+  Bits 7-6: Condition type (0-3):
+    0 = unconditional (always show)
+    1 = check CONDIT[256 + byte1]
+    2 = check CONDIT[512 + byte1]
+    3 = (not observed)
+  Bits 3-2: Menu option flag (nonzero → clickable dialogue choice)
+  Bits 1-0: High 2 bits of 10-bit phrase ID
+
+Byte 3: Phrase ID (low byte)
+  Full phrase ID = ((byte2 & 0x03) << 8) | byte3
+  Looked up in PHRASE*.HSQ with 0x800 OR-mask
+```
+
+### CONDIT Integration
+
+Full CONDIT index = `(condition_type × 256) + byte1`:
+- Type 0 → indices 0-255 (unconditional, 462 records)
+- Type 1 → indices 256-511 (conditional, 324 records)
+- Type 2 → indices 512-712 (conditional, 202 records)
+
+This maps exactly to CONDIT.HSQ's 713 entry offset table.
+
+### Processing Logic (sub_19F9E)
+
+1. Read 4-byte records until `0xFFFF` terminator
+2. Check "already spoken" (bit 7): if set and not repeatable (bit 6), skip
+3. Evaluate CONDIT condition: if FALSE, skip
+4. Call action function from bits 3-0 (if nonzero)
+5. If menu flag (bits 3-2 of byte 2) set, add to dialogue menu
+6. Set "spoken" bit (byte 0 |= 0x80)
+7. Display phrase text
+
+### Save File Mapping
+
+Dialogue state persisted at save offset **0x3338**. Only byte 0 of records changes
+at runtime (bit 7 gets set when lines are spoken).
+
+Reference: `tools/dialogue_decompiler.py`, `tools/dialogue_browser.py`
 
 ---
 

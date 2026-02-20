@@ -64,7 +64,14 @@ def load_offset_table(data: bytes) -> list:
 # =============================================================================
 
 def parse_dialogue_entry(data: bytes, start: int) -> list:
-    """Parse 4-byte dialogue records at offset `start` until 0xFFFF terminator."""
+    """Parse 4-byte dialogue records at offset `start` until 0xFFFF terminator.
+
+    Record format (from DNCDPRG.EXE sub_19F9E):
+      byte 0: flags (bit7=spoken, bit6=repeatable, bits3-0=action code)
+      byte 1: NPC ID (low byte of CONDIT index)
+      byte 2: bits7-6=cond_type, bits3-2=menu_flag, bits1-0=phrase_hi
+      byte 3: phrase ID low byte
+    """
     records = []
     pos = start
     while pos + 1 < len(data):
@@ -74,16 +81,19 @@ def parse_dialogue_entry(data: bytes, start: int) -> list:
         if pos + 3 >= len(data):
             break
         b0, b1, b2, b3 = data[pos], data[pos + 1], data[pos + 2], data[pos + 3]
-        raw_phrase = ((b2 << 8) | b3) & 0x3FF
-        phrase_idx = raw_phrase - 1 if raw_phrase > 0 else 0
-        phrase_bank = b2 & 0x03
-        phrase_flags = b2 & 0xFC
+        cond_type = (b2 >> 6) & 0x03
+        condit_idx = cond_type * 256 + b1  # full CONDIT index
+        phrase_idx = ((b2 & 0x03) << 8) | b3
         records.append({
             'cond_flags': b0,
-            'condit_idx': b1,
+            'spoken': bool(b0 & 0x80),
+            'repeatable': bool(b0 & 0x40),
+            'action_code': b0 & 0x0F,
+            'npc_id': b1,
+            'cond_type': cond_type,
+            'condit_idx': condit_idx,
+            'menu_flag': (b2 >> 2) & 0x03,
             'phrase_idx': phrase_idx,
-            'phrase_bank': phrase_bank,
-            'phrase_flags': phrase_flags,
         })
         pos += 4
     return records
@@ -239,21 +249,17 @@ class DialogueBundle:
             return f"<BANK {bank} NOT LOADED>"
         return get_phrase(self.phrase_data[bank], self.phrase_offsets[bank], phrase_idx)
 
-    def cond_flags_str(self, flags: int) -> str:
-        """Format condition flags."""
-        if flags == 0x00:
-            return ""
+    def record_flags_str(self, rec: dict) -> str:
+        """Format record flags."""
         parts = []
-        if flags & 0x40:
-            parts.append("GATE")
-        if flags & 0x80:
-            parts.append("0x80")
-        if flags & 0x20:
-            parts.append("0x20")
-        if flags & 0x10:
-            parts.append("0x10")
-        if flags & 0x0F:
-            parts.append(f"lo=0x{flags & 0x0F:X}")
+        if rec.get('spoken'):
+            parts.append("SPOKEN")
+        if rec.get('repeatable'):
+            parts.append("REPEAT")
+        if rec.get('action_code'):
+            parts.append(f"act={rec['action_code']}")
+        if rec.get('menu_flag'):
+            parts.append("MENU")
         return ' [' + '|'.join(parts) + ']' if parts else ''
 
 
@@ -276,16 +282,16 @@ def show_entry(bundle: DialogueBundle, entry_idx: int):
     for i, rec in enumerate(records):
         ci = rec['condit_idx']
         pi = rec['phrase_idx']
-        bank = rec['phrase_bank']
-        cf = rec['cond_flags']
+        ct = rec['cond_type']
 
-        flags_str = bundle.cond_flags_str(cf)
+        flags_str = bundle.record_flags_str(rec)
         cond_expr = bundle.get_condition_expr(ci)
-        phrase_text = bundle.get_phrase_text(bank, pi)
+        phrase_text = bundle.get_phrase_text(0, pi)
 
+        ctype_label = "unconditional" if ct == 0 else f"type{ct}"
         print(f"\n  Option {i}:{flags_str}")
-        print(f"    IF condit[0x{ci:02X}]: {cond_expr}")
-        print(f"    THEN phrase[bank{bank}:0x{pi:03X}]:")
+        print(f"    IF CONDIT[{ci}] ({ctype_label}): {cond_expr}")
+        print(f"    THEN phrase[0x{pi:03X}]:")
         # Wrap long text
         if len(phrase_text) > 80:
             words = phrase_text.split()
@@ -365,15 +371,16 @@ def show_search(bundle: DialogueBundle, query: str):
             continue
 
         for i, rec in enumerate(records):
-            text = bundle.get_phrase_text(rec['phrase_bank'], rec['phrase_idx'])
+            text = bundle.get_phrase_text(0, rec['phrase_idx'])
             if query_lower in text.lower():
                 ci = rec['condit_idx']
                 pi = rec['phrase_idx']
-                bank = rec['phrase_bank']
+                ct = rec['cond_type']
                 cond_expr = bundle.get_condition_expr(ci)
+                ctype_label = "unconditional" if ct == 0 else f"type{ct}"
                 print(f"Entry {entry_idx}, option {i}:")
-                print(f"  IF condit[0x{ci:02X}]: {cond_expr}")
-                print(f"  TEXT [bank{bank}:0x{pi:03X}]: {text}")
+                print(f"  IF CONDIT[{ci}] ({ctype_label}): {cond_expr}")
+                print(f"  TEXT [0x{pi:03X}]: {text}")
                 print()
                 matches += 1
 
@@ -387,8 +394,9 @@ def show_stats(bundle: DialogueBundle):
     total_records = 0
     condit_usage = {}
     phrase_usage = {}
-    bank_counts = {}
-    cond_flag_counts = {}
+    cond_type_counts = {}
+    repeatable_count = 0
+    menu_count = 0
 
     for idx in range(total_entries):
         records = bundle.get_dialogue_records(idx)
@@ -400,11 +408,14 @@ def show_stats(bundle: DialogueBundle):
         for rec in records:
             ci = rec['condit_idx']
             condit_usage[ci] = condit_usage.get(ci, 0) + 1
-            key = (rec['phrase_bank'], rec['phrase_idx'])
-            phrase_usage[key] = phrase_usage.get(key, 0) + 1
-            bank_counts[rec['phrase_bank']] = bank_counts.get(rec['phrase_bank'], 0) + 1
-            cf = rec['cond_flags']
-            cond_flag_counts[cf] = cond_flag_counts.get(cf, 0) + 1
+            pi = rec['phrase_idx']
+            phrase_usage[pi] = phrase_usage.get(pi, 0) + 1
+            ct = rec['cond_type']
+            cond_type_counts[ct] = cond_type_counts.get(ct, 0) + 1
+            if rec.get('repeatable'):
+                repeatable_count += 1
+            if rec.get('menu_flag'):
+                menu_count += 1
 
     # CONDIT coverage
     total_condit = len(bundle.cnd_offsets)
@@ -414,7 +425,6 @@ def show_stats(bundle: DialogueBundle):
     phrase_counts = {}
     for bank in bundle.phrase_offsets:
         phrase_counts[bank] = len(bundle.phrase_offsets[bank])
-    used_phrases = set(phrase_usage.keys())
 
     print(f"=== Dialogue System Cross-Reference Statistics ===")
     print(f"  Language: {LANG_NAMES.get(bundle.lang, 'Unknown')}")
@@ -424,6 +434,14 @@ def show_stats(bundle: DialogueBundle):
     print(f"    Non-empty entries: {non_empty}")
     print(f"    Total records:     {total_records}")
     print(f"    Avg records/entry: {total_records / non_empty:.1f}" if non_empty else "")
+    print(f"    Repeatable:        {repeatable_count}")
+    print(f"    One-shot:          {total_records - repeatable_count}")
+    print(f"    Menu options:      {menu_count}")
+    print()
+    print(f"  Condition type distribution:")
+    for ct in sorted(cond_type_counts):
+        label = "unconditional" if ct == 0 else f"type {ct} (CONDIT[{ct*256}..{ct*256+255}])"
+        print(f"    {label}: {cond_type_counts[ct]} records")
     print()
     print(f"  CONDIT.HSQ:")
     print(f"    Total conditions:  {total_condit}")
@@ -431,24 +449,19 @@ def show_stats(bundle: DialogueBundle):
     print(f"    Unused:            {total_condit - len(used_condits)}")
     print()
     for bank in sorted(phrase_counts):
-        used_in_bank = sum(1 for (b, p) in used_phrases if b == bank)
         print(f"  PHRASE (bank {bank}):")
         print(f"    Total strings:     {phrase_counts[bank]}")
-        print(f"    Used by dialogue:  {used_in_bank}")
-        print(f"    Records in bank:   {bank_counts.get(bank, 0)}")
-    print()
-    print(f"  Condition flags distribution:")
-    for cf, count in sorted(cond_flag_counts.items(), key=lambda x: -x[1]):
-        label = "always" if cf == 0 else f"0x{cf:02X}"
-        print(f"    {label:>8}: {count:3d} records")
+    print(f"    Unique phrases used: {len(phrase_usage)}")
     print()
     print(f"  Top 15 most-used CONDIT conditions:")
     for ci, count in sorted(condit_usage.items(), key=lambda x: -x[1])[:15]:
+        ct = ci // 256
+        lo = ci % 256
         expr = bundle.get_condition_expr(ci)
         # Truncate long expressions
-        if len(expr) > 60:
-            expr = expr[:57] + "..."
-        print(f"    [0x{ci:02X}] {count:3d} refs: {expr}")
+        if len(expr) > 55:
+            expr = expr[:52] + "..."
+        print(f"    [{ci:3d}] (type{ct}:0x{lo:02X}) {count:3d} refs: {expr}")
 
     print()
     print(f"  Game stage conditions breakdown:")
@@ -484,7 +497,7 @@ def show_stage_dialogue(bundle: DialogueBundle, stage_val: int):
         if relevant:
             print(f"Entry {entry_idx}:")
             for i, rec, expr in relevant:
-                text = bundle.get_phrase_text(rec['phrase_bank'], rec['phrase_idx'])
+                text = bundle.get_phrase_text(0, rec['phrase_idx'])
                 print(f"  [{i}] IF: {expr}")
                 print(f"      TEXT: {text}")
             print()

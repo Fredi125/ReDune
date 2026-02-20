@@ -59,8 +59,17 @@ dune1992-re/
 | 0x5592 | 2 | **DateTime** — bits[3:0]=hour(0-15), bits[15:4]=day |
 | 0x44BE | 2 | Spice stockpile (uint16 LE, ×10 = displayed kg) |
 | 0x4447 | 1 | Charisma (raw; GUI shows value/2) |
+| 0x3338 | ~3960 | Dialogue state (DIALOGUE.HSQ byte 0 spoken flags) |
 | 0x451E | 1960 | Sietch block: 70 × 28 bytes |
 | 0x4CC8 | 1836 | Troop block: 68 × 27 bytes |
+
+### DIALOGUE.HSQ (Dialogue Script Table)
+- **NOT a bytecode VM** — fixed 4-byte record table referencing CONDIT and PHRASE
+- 136 entries, 988 records, 480 unique phrase IDs
+- Record: `[flags+action] [npc_id] [cond_type+menu+phrase_hi] [phrase_lo]`
+- Full CONDIT index = `(cond_type * 256) + npc_id` (types 0/1/2 → indices 0-712)
+- All 713 CONDIT entries are used by dialogue (0 unused)
+- Save offset 0x3338: persists "spoken" flag (bit 7 of byte 0)
 
 ### CONDIT VM (Event Condition System)
 - **CONDIT.HSQ**: 10,907 bytes decompressed, 713 entry offset table → 41 bytecode chains
@@ -104,7 +113,8 @@ python3 tools/condit_decompiler.py samples/CONDIT.HSQ --chains
 
 ## Completed Work
 
-- [x] Decode DIALOGUE.HSQ bytecode format → `tools/dialogue_decompiler.py`
+- [x] Decode DIALOGUE.HSQ record format → `tools/dialogue_decompiler.py` (136 entries, 988 records, NOT a VM)
+- [x] Full DIALOGUE×CONDIT integration: CONDIT_idx = cond_type*256 + npc_id (all 713 CONDIT entries used)
 - [x] Map DS variables from Cryogenic source → `lib/constants.py`
 - [x] Build CONDIT recompiler → `tools/condit_recompiler.py` (63.7% roundtrip)
 - [x] Decode NPC data block (save offset 0x53F4+) → `tools/npc_smuggler_decoder.py`
