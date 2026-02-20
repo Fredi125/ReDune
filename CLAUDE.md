@@ -29,10 +29,11 @@ dune1992-re/
 │   ├── sprite_decoder.py    ← Sprite/graphics HSQ decoder (palettes, pixels)
 │   ├── map_decoder.py       ← MAP.HSQ world map decoder
 │   ├── command_decoder.py   ← COMMAND.HSQ string table decoder
-│   ├── hnm_decoder.py       ← HNM video file analyzer
+│   ├── hnm_decoder.py       ← HNM video decoder (BMP frame + WAV audio export)
 │   ├── lop_decoder.py       ← LOP background animation decoder
 │   ├── herad_decoder.py     ← HERAD AdLib/OPL2 music decoder (+ MIDI export)
 │   ├── sound_decoder.py     ← VOC sound effect decoder (+ WAV export)
+│   ├── dat_decoder.py       ← DUNE.DAT archive decoder (list/extract files)
 │   ├── file_index.py        ← Game file catalog (262 files, 18 categories)
 │   └── hsq_decompress.py   ← HSQ file decompressor
 ├── ui/                 ← Web UI
@@ -126,7 +127,7 @@ python3 tools/condit_decompiler.py samples/CONDIT.HSQ --chains
 - [x] Decode sprite/graphics HSQ format → `tools/sprite_decoder.py` (palettes, pixel data)
 - [x] Decode MAP.HSQ world map → `tools/map_decoder.py` (320×152 tiles, regions, locations)
 - [x] Decode COMMAND.HSQ string table → `tools/command_decoder.py` (all 186 HSQ files classified)
-- [x] Analyze HNM video files → `tools/hnm_decoder.py` (chunk structure, frame analysis)
+- [x] Decode HNM video format → `tools/hnm_decoder.py` (LZ frame decompression, BMP+WAV export)
 - [x] Decode LOP background animations → `tools/lop_decoder.py` (4-phase PackBits, 152×190 blit)
 - [x] Integrate CONDIT×DIALOGUE×PHRASE → `tools/dialogue_browser.py` (cross-reference browser)
 - [x] HERAD music format decoder → `tools/herad_decoder.py` (10 AdLib/OPL2 tracks, event parsing)
@@ -134,12 +135,13 @@ python3 tools/condit_decompiler.py samples/CONDIT.HSQ --chains
 - [x] Decode VOC sound effects → `tools/sound_decoder.py` (6 SN*.HSQ files, WAV export)
 - [x] Build game file catalog → `tools/file_index.py` (262 files, 18 categories)
 - [x] Comprehensive format guide → `docs/file_formats.md` (all formats documented)
+- [x] DUNE.DAT archive decoder → `tools/dat_decoder.py` (2549 files, list/extract/inspect)
 
 ## Pending Work
 
 ### Low Priority
-- [ ] HNM video frame pixel extraction (frame decoding beyond chunk analysis)
 - [ ] Complete game state editor (troops + NPCs + smugglers + conditions)
+- [ ] Decode GLOBDATA.HSQ fully (globe rendering tables)
 
 ## External References
 

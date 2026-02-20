@@ -479,34 +479,120 @@ Start with x86 JMP instructions (`E9` near jump, `EB` short jump).
 
 ## HNM (Video)
 
-Cryo Interactive proprietary video format (`*.HNM`). Used for intro, cutscenes, and ending.
+Cryo Interactive proprietary video format (HNM version 1, `*.HNM`). 36 files
+used for intro, cutscenes, location transitions, and ending sequence.
 
-### Structure
+### File Structure
 
-Chunk-based format. Each chunk starts with `uint16 LE chunk_size`.
+Chunk-based format. All multi-byte values are little-endian.
 
 **Chunk 0 (header)**:
-- VGA palette data (same format as sprite files: start, count, RGB×3)
-- Terminated by `0xFFFF`
-- Followed by frame offset table
+```
+uint16 LE: headerSize (total size of header chunk)
+Palette blocks:
+  Series of uint16 LE entries:
+    0xFFFF     → end of palette data
+    0x0100     → skip 3 bytes (padding)
+    Other      → low byte = start index, high byte = count (0→256)
+                 followed by count × 3 bytes of 6-bit VGA RGB
+0xFF fill bytes (variable, skip until non-0xFF)
+Frame offset table:
+  N+1 × uint32 LE (offsets relative to headerSize)
+  N = (headerSize - table_position) / 4 - 1
+```
 
-**Subsequent chunks (frames)**: sub-chunks with 2-byte ASCII tags:
+**Subsequent chunks (AV frames)**:
+```
+uint16 LE: avFrameSize (matches frame offset delta)
+Sub-chunks (tagged, processed sequentially):
+```
 
-| Tag | Type | Description |
-|-----|------|-------------|
-| `sd` | Sound | Digitized audio data |
-| `pl` | Palette | Palette update |
-| `pt` | Unknown | — |
-| `kl` | Unknown | — |
-| other | Video | Frame data: bits[8:0]=width, byte[2]&0xFF=height, byte[3]=mode |
+### Sub-chunk Tags
 
-**Video frame decompression**:
-- Checksum 0xAB (171): HSQ-style LZ77 decompression
-- Checksum 0xAD (173): Codebook-based with RLE
+| Tag (uint16 LE) | ASCII | Data | Description |
+|-----------------|-------|------|-------------|
+| 0x6C70 | `pl` | uint16 size + palette block | Palette update |
+| 0x6473 | `sd` | uint16 size + PCM samples | Audio data (8-bit unsigned, 11111 Hz) |
+| 0x6D6D | `mm` | uint16 size + data | Metadata (unused) |
+| Other | — | 4-byte frame header + pixel data | Video frame |
 
-Resolution: 320×200 (video area 320×152 + status bar).
+### Video Frame Header (4 bytes)
 
-Reference: `tools/hnm_decoder.py`, OpenRakis `HNMExtractor.cpp`
+When a sub-chunk tag doesn't match known tags, the tag's 2 bytes are the first
+2 bytes of the frame header:
+
+```
+Byte 0: width low 8 bits
+Byte 1: bit 0 = width bit 8, bits 1-7 = flags
+Byte 2: height
+Byte 3: mode
+```
+
+**Width**: `((byte1 & 0x01) << 8) | byte0` (9-bit, max 511)
+
+**Flags** (`byte1 & 0xFE`):
+- `0x02`: HSQ-compressed data follows (6-byte compression header)
+- `0x04`: full frame (no x,y offset in decompressed data)
+- `0x80`: PackBits-compressed pixel rendering
+
+**Mode**:
+- `0xFE`: opaque copy (all pixels written)
+- `0xFF`: transparent (pixel value 0 = skip/transparent)
+
+### Frame Decompression
+
+If `flags & 0x02`, a 6-byte compression header follows the frame header:
+```
+uint16 LE: decompressed size
+uint8:     zero (must be 0x00)
+uint16 LE: compressed size
+uint8:     salt (checksum byte)
+```
+
+Dispatch by sum of all 6 header bytes:
+- **0xAB** (171): Standard HSQ/LZ77 (same algorithm as file-level HSQ)
+- **0xAD** (173): AD codec with codebook and bitstream RLE
+
+After decompression (or if uncompressed):
+- If `flags & 0x04 == 0`: first 4 bytes = x_offset (uint16 LE) + y_offset (uint16 LE)
+- Remaining data = pixel data rendered to 320×200 frame buffer
+
+### PackBits Rendering (`flags & 0x80`)
+
+Per scanline (width pixels):
+- `cmd & 0x80`: RLE — repeat next byte `(257 - cmd)` times
+- Else: literal — copy `(cmd + 1)` bytes
+
+### AD Codec (Checksum 0xAD)
+
+Advanced compression using codebook + bitstream RLE. Header reinterpretation:
+```
+uint16 LE: framesize (decompressed pixel data size)
+uint16 LE: codebooksize
+uint8:     flags (0x04=full frame, 0x40=color base 0x80, 0x80=alternate mode)
+uint8:     salt
+```
+
+**Codebook unpacking**: LZ-like back-references with 4-bit packed lengths.
+**Pixel decoding**: Bitstream-driven with 1×, 2×, 3×, 4×, and extended RLE modes.
+
+### Video Files (36 total)
+
+| Category | Files | Resolution | Audio | Description |
+|----------|-------|------------|-------|-------------|
+| Intro sequences | SEQ[ABDDGIJKMNPQR] | 160×95 | Yes | Cutscene videos with dialogue |
+| Cryo logo | CRYO, CRYO2 | 320×139-200 | No | Publisher splash screens |
+| Virgin logo | VIRGIN | 320×200 | No | Publisher animation |
+| Title | TITLE, PRESENT | 320×200 | No | Title sequence, zoom effects |
+| Locations | MTG1-3, MNT1-4, FORT, SIET, PALACE, PLANT, VER | 320×152 | No | Location background animations |
+| Death scenes | DEAD, DEAD2, DEAD3 | 320×152 | No | Game over screens |
+| Ending | DFL2, IRULAN | 320×152, 160×91 | IRULAN only | Ending sequence |
+| Credits | CREDITS, AABBBBB | 320×152 | No | Credits roll |
+
+All 36 files use LZ codec (0xAB). No AD codec (0xAD) observed in CD v3.7 files.
+
+Reference: `tools/hnm_decoder.py` (analysis, BMP frame export, WAV audio extraction),
+OpenRakis `HNMExtractor.cpp`, ScummVM `video.cpp`
 
 ---
 
@@ -630,8 +716,51 @@ Reference: `tools/herad_decoder.py` (analysis + MIDI export via `--midi DIR`)
 
 ## DUNE.DAT (Archive)
 
-Indexed archive containing all game resources. Files can be overridden by placing
-loose files in the game directory.
+Main game archive containing all resources. 2549 files including subdirectory
+paths for voice files. Files can be overridden by placing loose files in the
+game directory.
+
+### Header (64KB = 0x10000)
+```
+Offset  Size  Field
+0x00    2     File count hint (uint16 LE, 0x0A3D = 2621 for CD v3.7)
+0x02    25×N  File entry records (25 bytes each)
+...           Zero-padded to 0x10000
+```
+
+**Version/magic**: The first uint16 `{0x3D, 0x0A}` serves as both file count
+hint (used by ScummVM for `reserve()`) and version magic (checked by DuneExtractor).
+
+### File Entry (25 bytes)
+```
+Offset  Size  Field
++0x00   16    Filename (null-padded ASCII, may include "\" subdirectory paths)
++0x10   4     File size (int32 LE)
++0x14   4     File offset (int32 LE, absolute from archive start)
++0x18   1     Flag (unused in CD version, always 0x00)
+```
+
+Entry list terminates when `name[0] == 0x00`.
+
+### Data Region (starts at 0x10000)
+
+File data stored at offsets specified in the header entries. HSQ-compressed files
+are auto-detected by the 6-byte header checksum (sum ≡ 0xAB mod 256).
+
+### Archive Contents (CD v3.7)
+
+| Category | Count | Description |
+|----------|-------|-------------|
+| Voice files (VOC) | ~2300 | Character dialogue (PA\, PB\, etc. subdirs) |
+| Sprite graphics | 133 | Portraits, backgrounds, UI |
+| HNM video | 36 | Cutscenes, animations |
+| HERAD music | 10 | AdLib/OPL2 music |
+| SAL scenes | 4 | Room layouts |
+| LOP animations | 6 | Ambient loops |
+| Game data | ~30 | BIN, MAP, CONDIT, DIALOGUE, COMMAND |
+| x86 drivers | 10 | Hardware driver overlays |
+
+Reference: `tools/dat_decoder.py`, ScummVM `archive.cpp`, OpenRakis `DuneExtractor.cs`
 
 ---
 
@@ -672,7 +801,8 @@ Offset  Name                 Size  Description
 | `tools/map_decoder.py` | MAP.HSQ | Analyze world map terrain |
 | `tools/sal_decoder.py` | *.SAL | Decode scene assembly layouts |
 | `tools/bin_decoder.py` | *.BIN | Decode binary data files |
-| `tools/hnm_decoder.py` | *.HNM | Analyze HNM video files |
+| `tools/hnm_decoder.py` | *.HNM | Decode HNM video + BMP/WAV export |
+| `tools/dat_decoder.py` | DUNE.DAT | List/extract archive contents |
 | `tools/lop_decoder.py` | *.LOP | Decode loop animations |
 | `tools/herad_decoder.py` | HERAD music HSQ | Decode music + MIDI export |
 | `tools/sound_decoder.py` | SN*.HSQ | Decode VOC sounds + WAV export |
