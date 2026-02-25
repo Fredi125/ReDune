@@ -527,7 +527,7 @@ Start with x86 JMP instructions (`E9` near jump, `EB` short jump).
 |----------|-------|-------------|
 | Sprite Graphics | 133 | Portraits, backgrounds, UI, animations |
 | Phrase Text | 14 | Dialogue strings (7 languages × 2 parts) |
-| HERAD Music | 10 | OPL2/AdLib music tracks |
+| HERAD Music | 30 | Music tracks (10 × 3 variants: HSQ/AGD/M32) |
 | x86 Drivers | 10 | Hardware driver overlays |
 | String Tables | 7 | UI text (7 language variants) |
 | Creative Voice | 6 | VOC sound effects |
@@ -710,13 +710,18 @@ Reference: `tools/lop_decoder.py`
 
 ## HERAD (Music)
 
-Cryo's proprietary OPL2/AdLib music format ("Hérault").
+Cryo's proprietary music format ("Hérault") with three hardware variants:
+- **HSQ** (OPL2/AdLib): 9 tracks, fixed status bytes, FM synthesis instruments
+- **AGD** (Tandy/PCjr): same as HSQ + 32-byte extra header for channel config
+- **M32** (Roland MT-32): single track with standard MIDI channelized events
 
-### Header (50 bytes, 0x00-0x31)
+Each of the 10 music tracks exists in all 3 variants (30 total files).
+
+### Common Header (bytes 0x00-0x31, all variants)
 ```
 Offset  Size  Field
 0x00    2     Instrument block offset (uint16 LE)
-0x02    2     Track 0 offset (always 0x0032 = 50, also signature)
+0x02    2     Track 0 offset (signature: 0x0032 for HSQ/M32, 0x0052 for AGD)
 0x04    2+    Track 1..N offsets (uint16 LE, 0x0000 = end)
 ...           Zero padding to 0x2C
 0x2C    2     Number of instruments (uint16 LE)
@@ -724,15 +729,23 @@ Offset  Size  Field
 0x30    2     Param3 — loop count (uint16 LE)
 ```
 
-**Identification**: Word at offset 2 is always `0x0032` (= 50, the data start offset).
+**Identification**: Word at offset 2 is `0x0032` (HSQ/M32) or `0x0052` (AGD).
+Exception: `CRYOMUS.AGD` uses `0x0032` (identical header to HSQ variant).
 
-### Track Data (offset 0x32 to instrument_offset)
+### AGD Extra Header (bytes 0x32-0x51, AGD only)
+
+When signature = `0x0052`, 32 extra bytes at 0x32-0x51 contain Tandy/PCjr-specific
+channel configuration. Track data starts at 0x52 instead of 0x32. All track offsets
+in the header are shifted +0x20 relative to HSQ. Some AGD files have more tracks
+than their HSQ counterparts (e.g., WORMINTR: 13 tracks vs 9, WORMSUIT: 15 vs 9).
+
+### Track Data (offset data_start to instrument_offset)
 
 Each track begins with a 2-byte header:
 - Byte 0: initial delay (single byte, typically 0x00-0x7F)
 - Byte 1: voice assignment (0x04 on track 0, 0xFF on tracks 1-8)
 
-### Event Stream (MIDI-like)
+### Event Stream — HSQ/AGD (OPL2, no channel in status byte)
 
 | Status | Name | Data | Description |
 |--------|------|------|-------------|
@@ -742,16 +755,34 @@ Each track begins with a 2-byte header:
 | 0xD0 | Control | param, value | Parameter change |
 | 0xFF | Voice/Sync | — | Channel marker |
 
-**Delta time encoding**: If next byte is a status byte (0x80/0x90/0xC0/0xD0/0xFF),
-implicit delta = 0. Otherwise, read VLQ-encoded delta time before the status byte.
-VLQ uses standard bit-7 continuation; only 0x81-0x8F appear as continuations in practice.
+### Event Stream — M32 (standard MIDI channelized)
+
+| Status | Name | Data | Description |
+|--------|------|------|-------------|
+| 0x9N | Note On | note, velocity | Note on, channel N |
+| 0x8N | Note Off | note, velocity | Note off, channel N |
+| 0xBN | Control Change | cc, value | Control change, channel N |
+| 0xCN | Program Change | program | Patch select, channel N |
+| 0xEN | Pitch Bend | LSB, MSB | Pitch wheel, channel N |
+| 0xDN | Aftertouch | pressure | Channel pressure, channel N |
+
+M32 files always have 1 track containing a multiplexed stream across up to 8 MIDI
+channels. Note counts are typically higher than OPL2 (e.g., ARRAKIS: 7,182 M32
+notes vs 3,637 OPL2 — the Roland arrangement is more detailed).
+
+### Delta Time Encoding (all variants)
+
+If next byte is a status byte (>= 0x80), implicit delta = 0. Otherwise, read
+VLQ-encoded delta time before the status byte. VLQ uses standard MIDI bit-7
+continuation encoding.
 
 ### Instrument Definitions (at instrument_offset)
 
 OPL2/FM synthesis register data, 11+ bytes per instrument:
 modulator registers, carrier registers, feedback/connection byte.
+M32 files contain MT-32 patch definitions instead.
 
-### Music Files
+### Music Files — OPL2/AdLib (HSQ)
 
 | File | Size | Tracks | Notes | Instruments | Description |
 |------|------|--------|-------|-------------|-------------|
@@ -766,9 +797,20 @@ modulator registers, carrier registers, feedback/connection byte.
 | WORMINTR.HSQ | 3,052 | 9 | 1,766 | 5 | Worm encounter |
 | WORMSUIT.HSQ | 7,476 | 9 | 4,056 | 6 | Worm riding |
 
-Three hardware variants (non-HSQ):
-- `.AGD` — Tandy/PCjr
-- `.M32` — Roland MT-32/LAPC-I MIDI
+### Variant Comparison
+
+| Track | HSQ Notes | AGD Notes | AGD Tracks | M32 Notes | M32 Channels |
+|-------|-----------|-----------|------------|-----------|--------------|
+| ARRAKIS | 3,637 | 3,637 | 9 | 7,182 | 8 |
+| BAGDAD | 3,954 | 3,954 | 9 | 5,916 | 8 |
+| CRYOMUS | 308 | 308 | 9 | 532 | 4 |
+| MORNING | 3,466 | 3,466 | 9 | 5,744 | 7 |
+| SEKENCE | 3,656 | 3,656 | 9 | 5,924 | 8 |
+| SIETCHM | 2,254 | 2,254 | 9 | 3,768 | 6 |
+| WARSONG | 2,748 | 2,748 | 9 | 4,492 | 7 |
+| WATER | 2,788 | 2,788 | 9 | 5,016 | 7 |
+| WORMINTR | 1,766 | 1,766 | 13 | 2,668 | 7 |
+| WORMSUIT | 4,056 | 4,056 | 15 | 6,988 | 8 |
 
 Reference: `tools/herad_decoder.py` (analysis + MIDI export via `--midi DIR`)
 
@@ -814,7 +856,7 @@ are auto-detected by the 6-byte header checksum (sum ≡ 0xAB mod 256).
 | Voice files (VOC) | ~2300 | Character dialogue (PA\, PB\, etc. subdirs) |
 | Sprite graphics | 133 | Portraits, backgrounds, UI |
 | HNM video | 36 | Cutscenes, animations |
-| HERAD music | 10 | AdLib/OPL2 music |
+| HERAD music | 30 | Music (10 tracks × HSQ/AGD/M32) |
 | SAL scenes | 4 | Room layouts |
 | LOP animations | 6 | Ambient loops |
 | Game data | ~30 | BIN, MAP, CONDIT, DIALOGUE, COMMAND |
@@ -864,7 +906,7 @@ Offset  Name                 Size  Description
 | `tools/hnm_decoder.py` | *.HNM | Decode HNM video + BMP/WAV export |
 | `tools/dat_decoder.py` | DUNE.DAT | List/extract archive contents |
 | `tools/lop_decoder.py` | *.LOP | Decode loop animations |
-| `tools/herad_decoder.py` | HERAD music HSQ | Decode music + MIDI export |
+| `tools/herad_decoder.py` | HERAD music (HSQ/AGD/M32) | Decode all 3 variants + MIDI export |
 | `tools/sound_decoder.py` | SN*.HSQ | Decode VOC sounds + WAV export |
 | `tools/npc_smuggler_decoder.py` | DUNE*.SAV | Decode NPC/smuggler data |
 | `tools/file_index.py` | All | Classify all 262 game files |

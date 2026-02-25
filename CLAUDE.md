@@ -31,7 +31,7 @@ dune1992-re/
 │   ├── command_decoder.py   ← COMMAND.HSQ string table decoder
 │   ├── hnm_decoder.py       ← HNM video decoder (BMP frame + WAV audio export)
 │   ├── lop_decoder.py       ← LOP background animation decoder
-│   ├── herad_decoder.py     ← HERAD AdLib/OPL2 music decoder (+ MIDI export)
+│   ├── herad_decoder.py     ← HERAD music decoder (HSQ/AGD/M32, 30 files + MIDI export)
 │   ├── sound_decoder.py     ← VOC sound effect decoder (+ WAV export)
 │   ├── dat_decoder.py       ← DUNE.DAT archive decoder (list/extract files)
 │   ├── globdata_decoder.py  ← GLOBDATA.HSQ decoder (gradients + globe projection)
@@ -131,18 +131,19 @@ python3 tools/condit_decompiler.py samples/CONDIT.HSQ --chains
 - [x] Decode HNM video format → `tools/hnm_decoder.py` (LZ frame decompression, BMP+WAV export)
 - [x] Decode LOP background animations → `tools/lop_decoder.py` (4-phase PackBits, 152×190 blit)
 - [x] Integrate CONDIT×DIALOGUE×PHRASE → `tools/dialogue_browser.py` (cross-reference browser)
-- [x] HERAD music format decoder → `tools/herad_decoder.py` (10 AdLib/OPL2 tracks, event parsing)
-- [x] HERAD → MIDI converter → `tools/herad_decoder.py --midi` (all 10 tracks exportable)
+- [x] HERAD music format decoder → `tools/herad_decoder.py` (10 tracks × 3 variants = 30 files)
+- [x] HERAD → MIDI converter → `tools/herad_decoder.py --midi` (all 30 files, all variants)
+- [x] HERAD AGD/M32 variant support → Tandy/PCjr + Roland MT-32 channelized MIDI
 - [x] Decode VOC sound effects → `tools/sound_decoder.py` (6 SN*.HSQ files, WAV export)
 - [x] Build game file catalog → `tools/file_index.py` (262 files, 18 categories)
 - [x] Comprehensive format guide → `docs/file_formats.md` (all formats documented)
 - [x] DUNE.DAT archive decoder → `tools/dat_decoder.py` (2549 files, list/extract/inspect)
+- [x] Decode GLOBDATA.HSQ → `tools/globdata_decoder.py` (55 gradient tables + 64 globe scanlines)
 
 ## Pending Work
 
 ### Low Priority
 - [ ] Complete game state editor (troops + NPCs + smugglers + conditions)
-- [ ] Decode GLOBDATA.HSQ fully (globe rendering tables)
 
 ## External References
 
