@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """
-Dune 1992 DUNE.DAT Archive Decoder
+Dune 1992 DUNE.DAT Archive Decoder & Repacker
 
-Reads and extracts files from the DUNE.DAT archive (Cryo Interactive, CD version).
+Reads, extracts, and rebuilds DUNE.DAT archives (Cryo Interactive, CD version).
 
 DUNE.DAT format:
   Header (64KB = 0x10000):
@@ -22,11 +22,14 @@ DUNE.DAT format:
 Reference: OpenRakis DuneExtractor.cs, ScummVM archive.cpp
 
 Usage:
-  python3 dat_decoder.py DUNE.DAT                   # List all files
-  python3 dat_decoder.py DUNE.DAT --stats            # Summary statistics
-  python3 dat_decoder.py DUNE.DAT --extract outdir/  # Extract all files
-  python3 dat_decoder.py DUNE.DAT --find "*.HNM"     # Find files by pattern
-  python3 dat_decoder.py DUNE.DAT --info CONDIT.HSQ   # Show info for one file
+  python3 dat_decoder.py DUNE.DAT                       # List all files
+  python3 dat_decoder.py DUNE.DAT --stats                # Summary statistics
+  python3 dat_decoder.py DUNE.DAT --extract outdir/      # Extract all files
+  python3 dat_decoder.py DUNE.DAT --find "*.HNM"         # Find files by pattern
+  python3 dat_decoder.py DUNE.DAT --info CONDIT.HSQ       # Show info for one file
+  python3 dat_decoder.py DUNE.DAT --manifest out.txt      # Export file manifest
+  python3 dat_decoder.py --repack indir/ -o NEW.DAT       # Repack from directory
+  python3 dat_decoder.py --repack indir/ -o NEW.DAT -m manifest.txt  # Repack with ordering
 """
 
 import argparse
@@ -36,7 +39,7 @@ import struct
 import sys
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'lib'))
-from compression import hsq_decompress, hsq_get_sizes
+from compression import hsq_decompress, hsq_compress, hsq_get_sizes
 
 # Version/magic bytes for CD version: uint16 LE 0x0A3D = 2621
 DAT_MAGIC = b'\x3D\x0A'
@@ -306,10 +309,253 @@ def extract_files(entries: list, dat_data: bytes, outdir: str, decompress: bool 
     print(f"\nExtracted {extracted} files to {outdir}/ ({errors} errors)")
 
 
+# =============================================================================
+# MANIFEST (file ordering)
+# =============================================================================
+
+def export_manifest(entries: list, outpath: str):
+    """Export file manifest preserving archive order.
+
+    Manifest is a plain text file with one filename per line.
+    Comments (# ...) and blank lines are allowed on import.
+    """
+    with open(outpath, 'w') as f:
+        f.write("# DUNE.DAT manifest — file order for repacking\n")
+        f.write(f"# {len(entries)} files\n")
+        for entry in entries:
+            f.write(f"{entry['name']}\n")
+    print(f"Exported manifest: {len(entries)} files -> {outpath}")
+
+
+def load_manifest(path: str) -> list:
+    """Load file manifest (one filename per line, # comments allowed)."""
+    names = []
+    with open(path, 'r') as f:
+        for line in f:
+            line = line.strip()
+            if not line or line.startswith('#'):
+                continue
+            names.append(line)
+    return names
+
+
+# =============================================================================
+# REPACK (directory → DUNE.DAT)
+# =============================================================================
+
+def collect_files(indir: str, manifest: list = None) -> list:
+    """Collect files from directory for repacking.
+
+    If manifest is provided, uses that ordering and only includes listed files.
+    Otherwise, collects all files alphabetically (uppercase names).
+
+    Returns list of (archive_name, local_path) tuples.
+    """
+    if manifest:
+        files = []
+        for name in manifest:
+            # Archive names use backslash for subdirs
+            local_name = name.replace('\\', os.sep)
+            local_path = os.path.join(indir, local_name)
+            if os.path.isfile(local_path):
+                files.append((name, local_path))
+            else:
+                print(f"  WARNING: manifest file not found: {name} ({local_path})",
+                      file=sys.stderr)
+        return files
+
+    # No manifest: scan directory recursively, build archive names
+    files = []
+    for dirpath, dirnames, filenames in os.walk(indir):
+        # Skip hidden files/dirs
+        dirnames[:] = [d for d in dirnames if not d.startswith('.')]
+        for fname in sorted(filenames):
+            if fname.startswith('.'):
+                continue
+            local_path = os.path.join(dirpath, fname)
+            # Build archive name relative to indir, with DOS backslash separators
+            rel = os.path.relpath(local_path, indir)
+            archive_name = rel.replace(os.sep, '\\').upper()
+            files.append((archive_name, local_path))
+
+    # Sort by archive name (uppercase)
+    files.sort(key=lambda x: x[0])
+    return files
+
+
+def build_dat(files: list, outpath: str, count_hint: int = 0x0A3D):
+    """Build a DUNE.DAT archive from a list of (archive_name, local_path) tuples.
+
+    Args:
+        files: List of (archive_name, local_path) tuples
+        outpath: Output DUNE.DAT path
+        count_hint: Version/magic uint16 (default 0x0A3D for CD v3.7)
+    """
+    # Validate: entries must fit in header
+    # Header: 2 (count) + N*25 (entries) + 1 (terminator) <= 0x10000
+    max_entries = (HEADER_SIZE - 3) // ENTRY_SIZE
+    if len(files) > max_entries:
+        raise ValueError(f"Too many files: {len(files)} (max {max_entries} for 64KB header)")
+
+    # Validate: filenames must fit in 16 bytes
+    for name, _ in files:
+        encoded = name.encode('ascii')
+        if len(encoded) > 15:  # 15 chars + null terminator
+            raise ValueError(f"Filename too long (max 15 chars): {name}")
+
+    # Read all file data
+    print(f"Reading {len(files)} files...")
+    file_data_list = []
+    total_data_size = 0
+    for name, local_path in files:
+        with open(local_path, 'rb') as f:
+            data = f.read()
+        file_data_list.append(data)
+        total_data_size += len(data)
+
+    # Build header
+    header = bytearray(HEADER_SIZE)
+    struct.pack_into('<H', header, 0, count_hint)
+
+    pos = 2
+    data_offset = HEADER_SIZE  # data starts after 64KB header
+
+    entries_written = 0
+    for i, (name, _) in enumerate(files):
+        file_data = file_data_list[i]
+
+        # Write 16-byte filename (null-padded)
+        name_bytes = name.encode('ascii')
+        header[pos:pos + len(name_bytes)] = name_bytes
+        # Remaining bytes already zero (null padding)
+
+        # Write size and offset
+        struct.pack_into('<i', header, pos + 16, len(file_data))
+        struct.pack_into('<i', header, pos + 20, data_offset)
+        header[pos + 24] = 0  # flag = 0
+
+        data_offset += len(file_data)
+        pos += ENTRY_SIZE
+        entries_written += 1
+
+    # Terminator: name[0] == 0x00 (already zero in bytearray)
+
+    # Write output file
+    with open(outpath, 'wb') as f:
+        f.write(header)
+        for data in file_data_list:
+            f.write(data)
+
+    archive_size = HEADER_SIZE + total_data_size
+    print(f"\nBuilt DUNE.DAT: {outpath}")
+    print(f"  Files: {entries_written}")
+    print(f"  Header: {HEADER_SIZE:,} bytes (64KB)")
+    print(f"  Data: {total_data_size:,} bytes ({total_data_size / 1024 / 1024:.1f} MB)")
+    print(f"  Total: {archive_size:,} bytes ({archive_size / 1024 / 1024:.1f} MB)")
+
+
+def repack(indir: str, outpath: str, manifest_path: str = None):
+    """Repack a directory of files into a DUNE.DAT archive.
+
+    Args:
+        indir: Directory containing game files
+        outpath: Output DUNE.DAT path
+        manifest_path: Optional manifest file for ordering
+    """
+    manifest = None
+    if manifest_path:
+        manifest = load_manifest(manifest_path)
+        print(f"Using manifest: {manifest_path} ({len(manifest)} files)")
+
+    files = collect_files(indir, manifest)
+    if not files:
+        print("No files found to pack.", file=sys.stderr)
+        return 1
+
+    print(f"Collected {len(files)} files from {indir}/")
+    build_dat(files, outpath)
+    return 0
+
+
+# =============================================================================
+# REPLACE (swap single file in archive)
+# =============================================================================
+
+def replace_file(dat_path: str, name: str, replacement_path: str, outpath: str):
+    """Replace a single file in a DUNE.DAT archive.
+
+    Rebuilds the archive with the specified file replaced. All other files
+    and the file ordering are preserved.
+
+    Args:
+        dat_path: Original DUNE.DAT path
+        name: Archive filename to replace (e.g. "CONDIT.HSQ")
+        replacement_path: Path to replacement file data
+        outpath: Output DUNE.DAT path
+    """
+    dat_data = open(dat_path, 'rb').read()
+    entries = parse_dat_header(dat_data)
+
+    # Find the target entry
+    target_idx = None
+    for i, entry in enumerate(entries):
+        if entry['name'].upper() == name.upper():
+            target_idx = i
+            break
+    if target_idx is None:
+        print(f"File not found in archive: {name}", file=sys.stderr)
+        return 1
+
+    # Read replacement data
+    with open(replacement_path, 'rb') as f:
+        new_data = f.read()
+
+    old_size = entries[target_idx]['size']
+    print(f"Replacing {name}: {old_size:,} -> {len(new_data):,} bytes")
+
+    # Rebuild archive
+    header = bytearray(HEADER_SIZE)
+    struct.pack_into('<H', header, 0, struct.unpack_from('<H', dat_data, 0)[0])
+
+    pos = 2
+    data_offset = HEADER_SIZE
+    data_chunks = []
+
+    for i, entry in enumerate(entries):
+        if i == target_idx:
+            file_data = new_data
+        else:
+            file_data = dat_data[entry['offset']:entry['offset'] + entry['size']]
+
+        # Write header entry
+        name_bytes = entry['name'].encode('ascii')
+        header[pos:pos + len(name_bytes)] = name_bytes
+        struct.pack_into('<i', header, pos + 16, len(file_data))
+        struct.pack_into('<i', header, pos + 20, data_offset)
+        header[pos + 24] = entry['flag']
+
+        data_chunks.append(file_data)
+        data_offset += len(file_data)
+        pos += ENTRY_SIZE
+
+    with open(outpath, 'wb') as f:
+        f.write(header)
+        for chunk in data_chunks:
+            f.write(chunk)
+
+    total = HEADER_SIZE + sum(len(c) for c in data_chunks)
+    print(f"Written: {outpath} ({total:,} bytes)")
+    return 0
+
+
+# =============================================================================
+# MAIN
+# =============================================================================
+
 def main():
     parser = argparse.ArgumentParser(
-        description='Dune 1992 DUNE.DAT Archive Decoder')
-    parser.add_argument('datfile', help='Path to DUNE.DAT')
+        description='Dune 1992 DUNE.DAT Archive Decoder & Repacker')
+    parser.add_argument('datfile', nargs='?', help='Path to DUNE.DAT (or input dir for --repack)')
     parser.add_argument('--stats', action='store_true',
                         help='Show summary statistics')
     parser.add_argument('--find', metavar='PATTERN',
@@ -322,14 +568,46 @@ def main():
                         help='Decompress HSQ files during extraction')
     parser.add_argument('--header-only', action='store_true',
                         help='Only read header (faster for large files)')
+    parser.add_argument('--manifest', metavar='OUTFILE',
+                        help='Export file manifest (preserves archive order)')
+    parser.add_argument('--repack', metavar='INDIR',
+                        help='Repack directory into DUNE.DAT')
+    parser.add_argument('--replace', nargs=2, metavar=('NAME', 'FILE'),
+                        help='Replace a single file in the archive')
+    parser.add_argument('-o', '--output', metavar='PATH',
+                        help='Output path for --repack or --replace')
+    parser.add_argument('-m', '--manifest-file', metavar='PATH',
+                        help='Manifest file for --repack ordering')
     args = parser.parse_args()
+
+    # --- Repack mode ---
+    if args.repack:
+        if not args.output:
+            print("--repack requires -o OUTPUT_PATH", file=sys.stderr)
+            return 1
+        return repack(args.repack, args.output, args.manifest_file)
+
+    # --- Replace mode ---
+    if args.replace:
+        if not args.datfile:
+            print("--replace requires DUNE.DAT path as first argument", file=sys.stderr)
+            return 1
+        if not args.output:
+            print("--replace requires -o OUTPUT_PATH", file=sys.stderr)
+            return 1
+        return replace_file(args.datfile, args.replace[0], args.replace[1], args.output)
+
+    # --- Read mode (requires datfile) ---
+    if not args.datfile:
+        parser.print_help()
+        return 1
 
     if not os.path.exists(args.datfile):
         print(f"File not found: {args.datfile}", file=sys.stderr)
         return 1
 
     # Read file (or just header for listing)
-    if args.header_only or (not args.extract and not args.info):
+    if args.header_only or (not args.extract and not args.info and not args.manifest):
         with open(args.datfile, 'rb') as f:
             data = f.read(HEADER_SIZE)
     else:
@@ -344,7 +622,9 @@ def main():
     entries = parse_dat_header(data)
     print(f"DUNE.DAT: {len(entries)} files\n")
 
-    if args.stats:
+    if args.manifest:
+        export_manifest(entries, args.manifest)
+    elif args.stats:
         show_stats(entries)
     elif args.find:
         list_files(entries, args.find)

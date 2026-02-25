@@ -33,7 +33,7 @@ dune1992-re/
 │   ├── lop_decoder.py       ← LOP background animation decoder
 │   ├── herad_decoder.py     ← HERAD music decoder (HSQ/AGD/M32, 30 files + MIDI export)
 │   ├── sound_decoder.py     ← VOC sound effect decoder (+ WAV export)
-│   ├── dat_decoder.py       ← DUNE.DAT archive decoder (list/extract files)
+│   ├── dat_decoder.py       ← DUNE.DAT archive decoder & repacker (extract/repack/replace)
 │   ├── globdata_decoder.py  ← GLOBDATA.HSQ decoder (gradients + globe projection)
 │   ├── file_index.py        ← Game file catalog (262 files, 18 categories)
 │   └── hsq_decompress.py   ← HSQ file decompressor
@@ -139,6 +139,7 @@ python3 tools/condit_decompiler.py samples/CONDIT.HSQ --chains
 - [x] Comprehensive format guide → `docs/file_formats.md` (all formats documented)
 - [x] DUNE.DAT archive decoder → `tools/dat_decoder.py` (2549 files, list/extract/inspect)
 - [x] Decode GLOBDATA.HSQ → `tools/globdata_decoder.py` (55 gradient tables + 64 globe scanlines)
+- [x] DUNE.DAT repacker → `tools/dat_decoder.py --repack/--replace` (round-trip asset modification)
 
 ## Pending Work
 

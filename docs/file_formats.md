@@ -862,6 +862,24 @@ are auto-detected by the 6-byte header checksum (sum ≡ 0xAB mod 256).
 | Game data | ~30 | BIN, MAP, CONDIT, DIALOGUE, COMMAND |
 | x86 drivers | 10 | Hardware driver overlays |
 
+### Repacking
+
+The archive can be rebuilt from extracted files:
+
+```bash
+# Repack entire directory into DUNE.DAT
+python3 tools/dat_decoder.py --repack gamedata/ -o DUNE.DAT
+
+# Repack with specific file ordering from manifest
+python3 tools/dat_decoder.py DUNE.DAT --manifest order.txt   # export ordering
+python3 tools/dat_decoder.py --repack gamedata/ -o DUNE.DAT -m order.txt
+
+# Replace single file (preserves all other files and ordering)
+python3 tools/dat_decoder.py DUNE.DAT --replace COMMAND1.HSQ modified.HSQ -o NEW.DAT
+```
+
+Round-trip workflow: extract → modify → HSQ recompress → replace → verify.
+
 Reference: `tools/dat_decoder.py`, ScummVM `archive.cpp`, OpenRakis `DuneExtractor.cs`
 
 ---
