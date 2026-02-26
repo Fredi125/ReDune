@@ -160,7 +160,7 @@ Offset  Size  Field
 +0x06   1     Coordinate sign (0x00=south or 0xFF=north hemisphere only)
 +0x07   1     Screen position X
 +0x08   1     Screen position Y
-+0x09   1     Appearance / type code (interior visual, 0-48 range)
++0x09   1     ★ Appearance byte ★ (selects SAL file + sprite set; see below)
 +0x0A   1     Housed troop ID (0-67; 0 = no troop)
 +0x0B   1     ★ Status bitfield ★ (see below)
 +0x0C   1     GameStage discovery threshold (0xFF = always available)
@@ -219,6 +219,42 @@ Subregion byte (+0x02) maps to second names:
 | 6 | Harg | | |
 
 Format: Subregion 1-2 → "Region (Faction)", Subregion 3+ → "Region-Sub"
+
+### Appearance Byte (+0x09) — Room Layout Selection
+
+The appearance byte determines which SAL file (room layout) and which sprite
+decoration set to load when the player enters a location. Decoded from the
+`calc_SAL_index` function at CS1:0x5E4F (chained threshold comparison):
+
+| Appearance Range | SAL File    | Resource | Decoration Sprites | Location Type |
+|------------------|-------------|----------|-------------------|---------------|
+| 0x00 - 0x1F     | SIET.SAL    | 0xA1     | MAP2.HSQ          | Fremen sietches (14 sections) |
+| 0x20             | PALACE.SAL  | 0xA2     | MIRROR.HSQ        | Atreides Palace (15 sections) |
+| 0x21 - 0x27     | VILG.SAL    | 0xA3     | DS0.HSQ           | Smuggler villages (11 sections) |
+| 0x28 - 0x2F     | HARK.SAL    | 0xA4     | DS1.HSQ           | Harkonnen locations (8 sections) |
+| 0x30+            | HARK.SAL    | 0xA4     | DS1.HSQ           | Clamped to Harkonnen |
+
+An alternate sprite mode (DS:0x46EB bit 7) swaps decoration files to
+VIL1-5.HSQ instead of the normal set above.
+
+The appearance byte does **not** directly select a section within the SAL file.
+Section selection (which room/view to render) is handled separately by the
+game's room navigation system. Each SAL section represents one room or view
+within a location.
+
+**SIET.SAL section roles** (from content analysis):
+- Section 0: Character position overlay only (6 NPC placement slots)
+- Sections 1-11: Full room layouts (cave interiors, 37-69 sprites each)
+- Section 12: Wind-trap overlay (drawn when status bit 0x20 is set)
+- Section 13: Vegetation overlay (drawn when status bit 0x01 is set)
+
+**Observed appearance values** (CD v3.7 sample save, 70 locations):
+- 0x00-0x0B: 40 regular sietches (12 visual variants, shared across locations)
+- 0x0C-0x10: 5 late-game sietches (regions 10-12, rarer variants)
+- 0x20: Atreides Palace only (Carthag)
+- 0x21: 6 smuggler villages (all Pyons subregion=10)
+- 0x28-0x2F: 21 Harkonnen-area locations (regions 1, 6, 7, 9)
+- 0x30: Harkonnen Fortress only (Arrakeen)
 
 ### Equipment Counts (+0x15 to +0x1B)
 

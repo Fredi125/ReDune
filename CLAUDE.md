@@ -70,7 +70,7 @@ dune1992-re/
 |--------|-------|-------|
 | +0x01 | Region | First name code (1-12, COMMAND[region-1]) |
 | +0x02 | Subregion | Second name (1-2=faction, 3-11=Tabr..Pyort) |
-| +0x09 | Appearance | Interior visual / type code |
+| +0x09 | Appearance | ★ SAL file selector (see Room Layout below) |
 | +0x0A | Troop ID | Housed troop (0-67) |
 | +0x0B | Status | Bitfield: 0x10=inventory, 0x20=windtrap, 0x40=prospected, 0x80=undiscovered |
 | +0x0C | Stage gate | GameStage threshold for discovery (0xFF=always) |
@@ -78,6 +78,15 @@ dune1992-re/
 | +0x12 | Spice amount | Stockpile at sietch |
 | +0x13 | Spice density | Mining yield (0-250) |
 | +0x15-0x1B | Equipment | 7 individual counts: Harv, Orni, Knif, Gun, Weird, Atom, Bulb |
+
+### Room Layout Architecture (SAL Files + Appearance Byte)
+- **4 SAL files** define all interior rooms: SIET(14sec), PALACE(15sec), VILG(11sec), HARK(8sec)
+- **Appearance byte** (+0x09) selects SAL file via `calc_SAL_index` (CS1:0x5E4F):
+  - `0x00-0x1F` → SIET.SAL, `0x20` → PALACE.SAL, `0x21-0x27` → VILG.SAL
+  - `0x28-0x2F` → HARK.SAL, `0x30+` → HARK.SAL (clamped)
+- **Sprite decoration HSQ** also selected: SIET→MAP2, PALACE→MIRROR, VILG→DS0, HARK→DS1
+- **Section within SAL** selected by room navigation, NOT by appearance byte
+- **SIET.SAL overlay sections**: 12=windtrap (status 0x20), 13=vegetation (status 0x01)
 
 ### DIALOGUE.HSQ (Dialogue Script Table)
 - **NOT a bytecode VM** — fixed 4-byte record table referencing CONDIT and PHRASE
@@ -154,6 +163,7 @@ python3 tools/condit_decompiler.py samples/CONDIT.HSQ --chains
 - [x] DUNE.DAT archive decoder → `tools/dat_decoder.py` (2549 files, list/extract/inspect)
 - [x] Decode GLOBDATA.HSQ → `tools/globdata_decoder.py` (55 gradient tables + 64 globe scanlines)
 - [x] DUNE.DAT repacker → `tools/dat_decoder.py --repack/--replace` (round-trip asset modification)
+- [x] Decode room layout architecture → `lib/constants.py` (calc_SAL_index @ CS1:0x5E4F, appearance→SAL mapping)
 
 ## Pending Work
 

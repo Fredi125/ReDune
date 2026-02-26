@@ -174,6 +174,82 @@ LOCATION_TYPE_LABELS = {
 
 
 # =============================================================================
+# ROOM LAYOUT: SAL FILES & APPEARANCE BYTE MAPPING
+# =============================================================================
+# Disassembled from calc_SAL_index at CS1:0x5E4F (29 bytes).
+# The appearance byte (sietch record +0x09) selects which SAL file to load
+# and which sprite set to use for room decoration.
+#
+# calc_SAL_index logic (chained threshold comparison on appearance byte):
+#   0x00-0x1F  → +0 → SIET.SAL    (resource 0xA1)
+#   0x20       → +1 → PALACE.SAL  (resource 0xA2)
+#   0x21-0x27  → +2 → VILG.SAL    (resource 0xA3)
+#   0x28-0x2F  → +3 → HARK.SAL    (resource 0xA4)
+#   0x30+      → +4 → clamped to HARK.SAL
+#
+# The full entry at CS1:0x5E42 also selects the sprite decoration HSQ file:
+#   Normal mode (DS:0x46EB bit 7 clear, base 0x3A):
+#     SIET→MAP2.HSQ, PALACE→MIRROR.HSQ, VILG→DS0.HSQ, HARK→DS1.HSQ
+#   Alternate mode (DS:0x46EB bit 7 set, base 0x7A):
+#     SIET→VIL1.HSQ, PALACE→VIL2.HSQ, VILG→VIL3.HSQ, HARK→VIL4.HSQ
+#
+# Within a loaded SAL file, the specific section (room/view) is selected
+# separately by the room navigation system, NOT by the appearance byte.
+# Section parameter encoding: section_within_file = (param - 1) & 0x0F
+
+SAL_FILES = {
+    0: ("SIET.SAL",   14, "Fremen sietch interiors"),
+    1: ("PALACE.SAL", 15, "Atreides palace rooms"),
+    2: ("VILG.SAL",   11, "Village/smuggler interiors"),
+    3: ("HARK.SAL",    8, "Harkonnen fortress rooms"),
+}
+
+# Sprite decoration HSQ files per SAL type
+SAL_SPRITE_NORMAL = {
+    0: "MAP2.HSQ",     # Sietch decoration sprites
+    1: "MIRROR.HSQ",   # Palace decoration sprites
+    2: "DS0.HSQ",      # Village decoration sprites
+    3: "DS1.HSQ",      # Harkonnen decoration sprites
+    4: "DS2.HSQ",      # Special decoration sprites
+}
+
+SAL_SPRITE_ALTERNATE = {
+    0: "VIL1.HSQ",     # Alternate sietch sprites
+    1: "VIL2.HSQ",     # Alternate palace sprites
+    2: "VIL3.HSQ",     # Alternate village sprites
+    3: "VIL4.HSQ",     # Alternate Harkonnen sprites
+    4: "VIL5.HSQ",     # Alternate special sprites
+}
+
+# Resource index → SAL filename (at DS:0x31FF resource pointer table)
+SAL_RESOURCE_INDEX = {
+    0xA1: "SIET.SAL",
+    0xA2: "PALACE.SAL",
+    0xA3: "VILG.SAL",
+    0xA4: "HARK.SAL",
+}
+
+
+def appearance_to_sal(appear: int) -> tuple:
+    """Map appearance byte to (sal_type_index, sal_filename, section_count).
+
+    Implements the calc_SAL_index threshold logic from CS1:0x5E4F.
+    Returns the SAL file type (0-3) and file info.
+    """
+    if appear < 0x20:
+        sal_type = 0    # SIET.SAL
+    elif appear < 0x21:
+        sal_type = 1    # PALACE.SAL
+    elif appear < 0x28:
+        sal_type = 2    # VILG.SAL
+    elif appear < 0x30:
+        sal_type = 3    # HARK.SAL
+    else:
+        sal_type = 3    # clamped to HARK.SAL (0x30+ → +4, then dec)
+    return (sal_type,) + SAL_FILES[sal_type]
+
+
+# =============================================================================
 # NPC DATA (save offset 0x53F4)
 # =============================================================================
 
