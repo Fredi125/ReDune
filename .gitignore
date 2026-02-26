@@ -9,3 +9,9 @@ __pycache__/
 # Temp/output
 /tmp/
 *.bak
+
+# Game archive (too large for git)
+DUNE.DAT
+
+# Voice file subdirectories (CD audio data)
+gamedata/P*/
