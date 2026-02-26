@@ -62,8 +62,22 @@ dune1992-re/
 | 0x44BE | 2 | Spice stockpile (uint16 LE, ×10 = displayed kg) |
 | 0x4447 | 1 | Charisma (raw; GUI shows value/2) |
 | 0x3338 | ~3960 | Dialogue state (DIALOGUE.HSQ byte 0 spoken flags) |
-| 0x451E | 1960 | Sietch block: 70 × 28 bytes |
+| 0x451E | 1960 | Sietch block: 70 × 28 bytes (names from COMMAND1.HSQ) |
 | 0x4CC8 | 1836 | Troop block: 68 × 27 bytes |
+
+### Sietch Record Layout (28 bytes, 0-indexed)
+| Offset | Field | Notes |
+|--------|-------|-------|
+| +0x01 | Region | First name code (1-12, COMMAND[region-1]) |
+| +0x02 | Subregion | Second name (1-2=faction, 3-11=Tabr..Pyort) |
+| +0x09 | Appearance | Interior visual / type code |
+| +0x0A | Troop ID | Housed troop (0-67) |
+| +0x0B | Status | Bitfield: 0x10=inventory, 0x20=windtrap, 0x40=prospected, 0x80=undiscovered |
+| +0x0C | Stage gate | GameStage threshold for discovery (0xFF=always) |
+| +0x11 | Spice field | Unique spice field ID (1-76) |
+| +0x12 | Spice amount | Stockpile at sietch |
+| +0x13 | Spice density | Mining yield (0-250) |
+| +0x15-0x1B | Equipment | 7 individual counts: Harv, Orni, Knif, Gun, Weird, Atom, Bulb |
 
 ### DIALOGUE.HSQ (Dialogue Script Table)
 - **NOT a bytecode VM** — fixed 4-byte record table referencing CONDIT and PHRASE

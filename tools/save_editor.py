@@ -34,6 +34,7 @@ from lib.compression import f7_decompress, f7_compress
 from lib.constants import (
     SAVE_OFFSETS as OFF, SIETCH_COUNT, SIETCH_SIZE, TROOP_COUNT, TROOP_SIZE,
     GAME_STAGES, TROOP_JOBS, equipment_str,
+    location_name, sietch_status_str, SIETCH_STATUS_FLAGS,
 )
 
 
@@ -137,28 +138,97 @@ class DuneSave:
         return OFF["sietch_block"] + idx * SIETCH_SIZE
 
     def sietch(self, idx):
+        """Parse sietch record (28 bytes) using corrected byte layout.
+
+        Layout (0-indexed, CD v3.7):
+          +0x00  byte0       Unknown (mostly 0x00; purpose TBD)
+          +0x01  region      First name code (1-12, COMMAND[region-1])
+          +0x02  subregion   Second name code (1-11, COMMAND[sub+11])
+          +0x03  coord1      GPS/coordinate byte 1
+          +0x04  coord2      GPS/coordinate byte 2
+          +0x05  coord3      GPS/coordinate byte 3 (with +0x06 forms int16)
+          +0x06  coord_sign  Coordinate sign/hemisphere (0x00 or 0xFF only)
+          +0x07  pos_x       Screen/sprite position X
+          +0x08  pos_y       Screen/sprite position Y
+          +0x09  appearance  Type / interior appearance code
+          +0x0A  troop_id    Housed troop ID (0-67)
+          +0x0B  status      Status bitfield (flags below)
+          +0x0C  stage_gate  GameStage discovery threshold (0xFF=always)
+          +0x0D  unk3        Reserved (always 0 in observed saves)
+          +0x0E  unk4        Reserved
+          +0x0F  unk5        Reserved
+          +0x10  unk6        Reserved
+          +0x11  spice_fld   Spice field ID (1-76, unique per sietch)
+          +0x12  spice_amt   Spice amount (stockpile at sietch)
+          +0x13  spice_dens  Spice density (mining yield, 0-250)
+          +0x14  unk8        Unknown (possibly ecology/battle counter)
+          +0x15  harvesters  Harvester count
+          +0x16  ornithopters Ornithopter count
+          +0x17  knives      Knife count
+          +0x18  guns        Laser gun count
+          +0x19  weirding    Weirding module count
+          +0x1A  atomics     Atomics count
+          +0x1B  bulbs       Bulb count (or water; all 0 in observed saves)
+
+        Status bits (+0x0B):
+          0x01  Vegetation     0x10  Inventory visible
+          0x02  In battle      0x20  Wind-trap built
+                               0x40  Prospected
+                               0x80  Undiscovered
+        """
         off = self.sietch_offset(idx)
         raw = self.data[off:off + SIETCH_SIZE]
-        status = raw[0]
+        status = raw[0x0B]
         return {
-            'index': idx, 'status': status,
-            'discovered': bool(status & 0x01), 'visited': bool(status & 0x02),
-            'vegetation': bool(status & 0x04), 'in_battle': bool(status & 0x08),
-            'gps_x': struct.unpack_from('<H', raw, 2)[0],
-            'gps_y': struct.unpack_from('<H', raw, 4)[0],
-            'region': raw[6], 'housed_troop': raw[7], 'spice_density': raw[8],
-            'equipment': raw[25], 'water': raw[26], 'spice': raw[27],
+            'index': idx,
+            'byte0': raw[0x00],
+            'region': raw[0x01],
+            'subregion': raw[0x02],
+            'name': location_name(raw[0x01], raw[0x02]),
+            'coord1': raw[0x03],
+            'coord2': raw[0x04],
+            'coord3': raw[0x05],
+            'coord_sign': raw[0x06],
+            'pos_x': raw[0x07],
+            'pos_y': raw[0x08],
+            'appearance': raw[0x09],
+            'troop_id': raw[0x0A],
+            'status': status,
+            'discovered': not bool(status & 0x80),
+            'prospected': bool(status & 0x40),
+            'windtrap': bool(status & 0x20),
+            'inventory': bool(status & 0x10),
+            'in_battle': bool(status & 0x02),
+            'vegetation': bool(status & 0x01),
+            'stage_gate': raw[0x0C],
+            'spice_field': raw[0x11],
+            'spice_amount': raw[0x12],
+            'spice_density': raw[0x13],
+            'harvesters': raw[0x15],
+            'ornithopters': raw[0x16],
+            'knives': raw[0x17],
+            'guns': raw[0x18],
+            'weirding': raw[0x19],
+            'atomics': raw[0x1A],
+            'bulbs': raw[0x1B],
         }
 
     SIETCH_FIELDS = {
-        'status': (0, 1), 'region': (6, 1), 'housed_troop': (7, 1),
-        'spice_density': (8, 1), 'equipment': (25, 1), 'equip': (25, 1),
-        'water': (26, 1), 'spice': (27, 1),
+        'byte0': (0x00, 1),
+        'region': (0x01, 1), 'subregion': (0x02, 1),
+        'appearance': (0x09, 1), 'troop_id': (0x0A, 1), 'troop': (0x0A, 1),
+        'status': (0x0B, 1), 'stage_gate': (0x0C, 1),
+        'spice_field': (0x11, 1), 'spice_amount': (0x12, 1), 'spice': (0x12, 1),
+        'spice_density': (0x13, 1),
+        'harvesters': (0x15, 1), 'ornithopters': (0x16, 1),
+        'knives': (0x17, 1), 'guns': (0x18, 1),
+        'weirding': (0x19, 1), 'atomics': (0x1A, 1), 'bulbs': (0x1B, 1),
     }
 
     def set_sietch_field(self, idx, field, value):
         if field not in self.SIETCH_FIELDS:
             print(f"  Unknown sietch field: {field}")
+            print(f"  Available: {', '.join(sorted(self.SIETCH_FIELDS.keys()))}")
             return False
         foff, _ = self.SIETCH_FIELDS[field]
         self.w8(self.sietch_offset(idx) + foff, value)
@@ -223,44 +293,75 @@ def show_troops(sav, detail_idx=None):
         print(fmt.format(i, t['troop_id'], job, t['sietch_id'], t['population'], t['motivation'], eq))
 
 
+def _equip_summary(s):
+    """One-line equipment summary from individual sietch counts."""
+    parts = []
+    if s['harvesters']:  parts.append(f"H:{s['harvesters']}")
+    if s['ornithopters']:parts.append(f"O:{s['ornithopters']}")
+    if s['knives']:      parts.append(f"K:{s['knives']}")
+    if s['guns']:        parts.append(f"G:{s['guns']}")
+    if s['weirding']:    parts.append(f"W:{s['weirding']}")
+    if s['atomics']:     parts.append(f"A:{s['atomics']}")
+    if s['bulbs']:       parts.append(f"B:{s['bulbs']}")
+    return ' '.join(parts) if parts else '-'
+
+
 def show_sietches(sav, detail_idx=None):
     if detail_idx is not None:
         s = sav.sietch(detail_idx)
-        flags = []
-        if s['discovered']: flags.append('DISCOVERED')
-        if s['visited']:    flags.append('VISITED')
-        if s['vegetation']: flags.append('VEGETATION')
-        if s['in_battle']:  flags.append('IN_BATTLE')
-        print(f"\n=== Sietch #{detail_idx} Detail ===")
-        print(f"  Status:      0x{s['status']:02X} = {', '.join(flags) or 'None'}")
-        print(f"  GPS:         ({s['gps_x']}, {s['gps_y']})")
-        print(f"  Region:      {s['region']}")
-        print(f"  Troop:       {s['housed_troop']}")
-        print(f"  Spice Dens:  {s['spice_density']}")
-        print(f"  Equipment:   0x{s['equipment']:02X} = {equipment_str(s['equipment'])}")
-        print(f"  Water:       {s['water']}")
-        print(f"  Spice:       {s['spice']}")
+        status_desc = sietch_status_str(s['status'])
+        print(f"\n=== Sietch #{detail_idx}: {s['name']} ===")
+        print(f"  Region:       {s['region']} / Subregion: {s['subregion']}")
+        print(f"  Status:       0x{s['status']:02X} = {status_desc}")
+        print(f"  Discovered:   {'Yes' if s['discovered'] else 'No'}")
+        if s['prospected']:  print(f"  Prospected:   Yes")
+        if s['windtrap']:    print(f"  Wind-trap:    Yes")
+        if s['inventory']:   print(f"  Inventory:    Visible")
+        if s['vegetation']:  print(f"  Vegetation:   Yes")
+        if s['in_battle']:   print(f"  In battle:    Yes")
+        gate = s['stage_gate']
+        if gate == 0xFF:
+            print(f"  Stage gate:   0xFF (always available)")
+        else:
+            stage_name = GAME_STAGES.get(gate, "")
+            extra = f" = {stage_name}" if stage_name else ""
+            print(f"  Stage gate:   0x{gate:02X}{extra}")
+        print(f"  Appearance:   0x{s['appearance']:02X} ({s['appearance']})")
+        print(f"  Troop ID:     {s['troop_id']}" + (" (none)" if s['troop_id'] == 0 else ""))
+        print(f"  Coordinates:  ({s['coord1']}, {s['coord2']}) sign:{s['coord_sign']:02X} / pos:({s['pos_x']}, {s['pos_y']})")
+        print(f"  Spice field:  {s['spice_field']}")
+        print(f"  Spice amount: {s['spice_amount']}")
+        print(f"  Spice dens:   {s['spice_density']}")
+        print(f"  Equipment:    Harv={s['harvesters']} Orni={s['ornithopters']} "
+              f"Knif={s['knives']} Gun={s['guns']} Weird={s['weirding']} "
+              f"Atom={s['atomics']} Bulb={s['bulbs']}")
+        print(f"  Byte0:        0x{s['byte0']:02X}")
         off = sav.sietch_offset(detail_idx)
         raw = ' '.join(f'{sav.data[off + i]:02X}' for i in range(SIETCH_SIZE))
-        print(f"  Raw bytes:   {raw}")
+        print(f"  Raw bytes:    {raw}")
         return
 
     print(f"\n=== Sietches ({SIETCH_COUNT} records) ===")
-    fmt = "{:>3}  {:<8}  {:>12}  {:>3}  {:>3}  {:<20}  {:>3}  {:>3}"
-    print(fmt.format("#", "Status", "GPS", "Rgn", "Trp", "Equipment", "Wtr", "Spc"))
+    hdr = "{:>3}  {:<22}  {:<14}  {:>3}  {:>5}  {:>5}  {:>5}  {}"
+    print(hdr.format("#", "Name", "Status", "Trp", "SpcAm", "Dens", "SFld", "Equipment"))
+    print("-" * 95)
     for i in range(SIETCH_COUNT):
         s = sav.sietch(i)
-        if s['status'] == 0 and s['gps_x'] == 0 and s['gps_y'] == 0:
-            continue
+        # Build compact status flags
         flags = []
-        if s['discovered']: flags.append('D')
-        if s['visited']:    flags.append('V')
-        if s['vegetation']: flags.append('E')
-        if s['in_battle']:  flags.append('B')
+        if s['discovered']:  flags.append('D')
+        if s['prospected']:  flags.append('P')
+        if s['windtrap']:    flags.append('W')
+        if s['inventory']:   flags.append('I')
+        if s['vegetation']:  flags.append('V')
+        if s['in_battle']:   flags.append('B')
         status = '|'.join(flags) or '-'
-        gps = f"({s['gps_x']},{s['gps_y']})"
-        eq = equipment_str(s['equipment'])[:20]
-        print(fmt.format(i, status, gps, s['region'], s['housed_troop'], eq, s['water'], s['spice']))
+        equip = _equip_summary(s)
+        print(hdr.format(
+            i, s['name'], status, s['troop_id'],
+            s['spice_amount'], s['spice_density'], s['spice_field'],
+            equip,
+        ))
 
 
 # =============================================================================

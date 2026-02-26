@@ -140,29 +140,87 @@ Offset  Size  Field
 
 ## Sietch Record (28 bytes)
 
-70 records starting at offset 0x451E.
+70 records starting at offset 0x451E. Names are composed from COMMAND1.HSQ
+string table: region indexes first names (strings 0-11), subregion indexes
+second names (strings 12-22). Subregion 1-2 = faction suffix (Atreides/
+Harkonnen), 3-11 = hyphenated sietch names (Tabr through Pyort).
+
+> **Note**: The Tox/DuneEdit2 field offsets use 1-indexed byte numbering
+> within the record. All offsets below are **0-indexed** (our convention).
 
 ```
 Offset  Size  Field
 ------  ----  -----
-+0x00   1     Status bitfield
-+0x01   1     Unknown
-+0x02   2     GPS X coordinate (uint16 LE)
-+0x04   2     GPS Y coordinate (uint16 LE)
-+0x06   1     Region/type
-+0x07   1     Housed troop ID
-+0x08   1     Spice density
-+0x09-0x18    Unknown fields
-+0x19   1     Equipment bitfield (same as troop)
-+0x1A   1     Water level (0-255)
-+0x1B   1     Spice amount (0-255)
++0x00   1     Byte0 (unknown; mostly 0x00, purpose TBD)
++0x01   1     Region (first name, 1-indexed: 1=Arrakeen..12=Celimyn)
++0x02   1     Subregion (second name: 1=(Atreides), 2=(Harkonnen), 3=Tabr..11=Pyort)
++0x03   1     GPS coordinate byte 1
++0x04   1     GPS coordinate byte 2
++0x05   1     GPS coordinate byte 3 (with +0x06 forms int16 Y)
++0x06   1     Coordinate sign (0x00=south or 0xFF=north hemisphere only)
++0x07   1     Screen position X
++0x08   1     Screen position Y
++0x09   1     Appearance / type code (interior visual, 0-48 range)
++0x0A   1     Housed troop ID (0-67; 0 = no troop)
++0x0B   1     ★ Status bitfield ★ (see below)
++0x0C   1     GameStage discovery threshold (0xFF = always available)
++0x0D   1     Reserved (always 0)
++0x0E   1     Reserved (always 0)
++0x0F   1     Reserved (always 0)
++0x10   1     Reserved (always 0)
++0x11   1     Spice field ID (1-76, unique per sietch)
++0x12   1     Spice amount (stockpile at sietch, 0-138)
++0x13   1     Spice density (mining yield, 0-250)
++0x14   1     Unknown8 (mostly 0; possibly ecology/battle counter)
++0x15   1     Harvesters (equipment count, 0-2)
++0x16   1     Ornithopters (equipment count, 0-3)
++0x17   1     Knives (equipment count, 0-5)
++0x18   1     Laser guns (equipment count, 0-3)
++0x19   1     Weirding modules (equipment count, 0-3)
++0x1A   1     Atomics (equipment count, 0-3)
++0x1B   1     Bulbs (equipment count; all 0 in observed saves)
 ```
 
-### Status Bitfield
+### Status Bitfield (+0x0B)
 
 | Bit | Meaning |
 |-----|---------|
-| 0x01 | Discovered |
-| 0x02 | Visited |
-| 0x04 | Has vegetation |
-| 0x08 | In battle |
+| 0x01 | Vegetation present (prevents spice mining) |
+| 0x02 | In battle |
+| 0x10 | Inventory visible to player |
+| 0x20 | Wind-trap constructed |
+| 0x40 | Area prospected for spice |
+| 0x80 | Not yet discovered (inverted: 0 = discovered) |
+
+Common combinations observed: 0x00 (visible), 0x10 (inventory only),
+0x50 (inventory + prospected), 0x70 (inventory + windtrap + prospected),
+0x80 (undiscovered), 0xA0 (windtrap + undiscovered = pre-built windtrap).
+
+### Sietch Naming
+
+Region byte (+0x01) is 1-indexed into COMMAND first names:
+
+| Code | Name | Code | Name | Code | Name |
+|------|------|------|------|------|------|
+| 1 | Arrakeen | 5 | Oxtyn | 9 | Haga |
+| 2 | Carthag | 6 | Tsympo | 10 | Cielago |
+| 3 | Tuono | 7 | Bledan | 11 | Sihaya |
+| 4 | Habbanya | 8 | Ergsun | 12 | Celimyn |
+
+Subregion byte (+0x02) maps to second names:
+
+| Code | Name | Code | Name |
+|------|------|------|------|
+| 1 | (Atreides) | 7 | Clam |
+| 2 | (Harkonnen) | 8 | Tsymyn |
+| 3 | Tabr | 9 | Siet |
+| 4 | Timin | 10 | Pyons |
+| 5 | Tuek | 11 | Pyort |
+| 6 | Harg | | |
+
+Format: Subregion 1-2 → "Region (Faction)", Subregion 3+ → "Region-Sub"
+
+### Equipment Counts (+0x15 to +0x1B)
+
+Unlike troop equipment (which uses a bitfield), sietch equipment stores
+**individual counts** per item type. Each byte is a count (typically 0-5).

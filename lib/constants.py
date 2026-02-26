@@ -84,7 +84,7 @@ TROOP_JOBS = {
 
 
 # =============================================================================
-# EQUIPMENT FLAGS (bitfield)
+# EQUIPMENT FLAGS (troop bitfield)
 # =============================================================================
 
 EQUIPMENT_FLAGS = {
@@ -103,6 +103,74 @@ def equipment_str(val: int) -> str:
     """Convert equipment bitfield to human-readable string."""
     parts = [name for bit, name in EQUIPMENT_FLAGS.items() if val & bit]
     return ', '.join(parts) if parts else 'None'
+
+
+# =============================================================================
+# SIETCH/LOCATION NAME TABLES (from COMMAND1.HSQ strings 0-22)
+# =============================================================================
+# Region byte (sietch record +0x01) is 1-indexed into COMMAND first names.
+# Subregion byte (+0x02) maps to COMMAND second names:
+#   1=(Atreides), 2=(Harkonnen), 3-11=Tabr..Pyort via COMMAND[sub+11].
+
+LOCATION_FIRST_NAMES = {
+    1: "Arrakeen",   2: "Carthag",    3: "Tuono",
+    4: "Habbanya",   5: "Oxtyn",      6: "Tsympo",
+    7: "Bledan",     8: "Ergsun",     9: "Haga",
+    10: "Cielago",  11: "Sihaya",    12: "Celimyn",
+}
+
+LOCATION_SECOND_NAMES = {
+    1: "(Atreides)",  2: "(Harkonnen)",
+    3: "Tabr",   4: "Timin",   5: "Tuek",    6: "Harg",
+    7: "Clam",   8: "Tsymyn",  9: "Siet",   10: "Pyons",  11: "Pyort",
+}
+
+
+def location_name(region: int, subregion: int) -> str:
+    """Build sietch name from region + subregion codes.
+
+    Region is 1-indexed into COMMAND first names (1-12).
+    Subregion 1-2 = faction suffix, 3-11 = hyphenated second name.
+    """
+    first = LOCATION_FIRST_NAMES.get(region, f"?{region}")
+    second = LOCATION_SECOND_NAMES.get(subregion, f"?{subregion}")
+    if subregion <= 2:
+        return f"{first} {second}"
+    return f"{first}-{second}"
+
+
+# =============================================================================
+# SIETCH STATUS FLAGS (sietch record +0x0B)
+# =============================================================================
+# Source: Dune Editor wiki + data pattern analysis (only 6 unique values
+# observed across 70 records: 0x00, 0x10, 0x50, 0x70, 0x80, 0xA0).
+
+SIETCH_STATUS_FLAGS = {
+    0x01: "Vegetation",   # Vegetation present (prevents spice mining)
+    0x02: "InBattle",     # Currently in battle
+    0x10: "Inventory",    # Sietch inventory visible to player
+    0x20: "WindTrap",     # Wind-trap constructed
+    0x40: "Prospected",   # Area has been prospected for spice
+    0x80: "Undiscovered", # Sietch not yet discovered by player
+}
+
+
+def sietch_status_str(val: int) -> str:
+    """Convert sietch status bitfield to human-readable string."""
+    parts = [name for bit, name in SIETCH_STATUS_FLAGS.items() if val & bit]
+    return ', '.join(parts) if parts else 'Visible'
+
+
+# =============================================================================
+# LOCATION TYPE LABELS (from COMMAND1.HSQ strings 67-70)
+# =============================================================================
+
+LOCATION_TYPE_LABELS = {
+    67: "Sietch",
+    68: "Palace",
+    69: "Village",
+    70: "Fort",
+}
 
 
 # =============================================================================
