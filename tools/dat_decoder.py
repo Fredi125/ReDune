@@ -431,6 +431,8 @@ def collect_files(indir: str, manifest_entries: list = None) -> list:
 def build_dat(files: list, outpath: str, count_hint: int = 0x0A3D):
     """Build a DUNE.DAT archive from a list of (archive_name, local_path, flag) tuples.
 
+    File data is aligned to 16-byte boundaries, matching the original DUNE.DAT layout.
+
     Args:
         files: List of (archive_name, local_path, flag) tuples
         outpath: Output DUNE.DAT path
@@ -463,7 +465,7 @@ def build_dat(files: list, outpath: str, count_hint: int = 0x0A3D):
     struct.pack_into('<H', header, 0, count_hint)
 
     pos = 2
-    data_offset = HEADER_SIZE  # data starts after 64KB header
+    data_offset = HEADER_SIZE  # data starts after 64KB header (already 16-byte aligned)
 
     entries_written = 0
     for i, (name, _, flag) in enumerate(files):
@@ -479,25 +481,34 @@ def build_dat(files: list, outpath: str, count_hint: int = 0x0A3D):
         struct.pack_into('<i', header, pos + 20, data_offset)
         header[pos + 24] = flag  # preserve original flag
 
+        # Advance offset past file data, then align to 16-byte boundary
         data_offset += len(file_data)
+        data_offset = (data_offset + 15) & ~15  # align to next 16-byte boundary
+
         pos += ENTRY_SIZE
         entries_written += 1
 
     # Terminator: name[0] == 0x00 (already zero in bytearray)
 
-    # Write output file
+    # Write output file with 16-byte alignment padding between files
     with open(outpath, 'wb') as f:
         f.write(header)
-        for data in file_data_list:
+        for i, data in enumerate(file_data_list):
             f.write(data)
+            # Pad to 16-byte boundary between files (not after last file)
+            if i < len(file_data_list) - 1:
+                remainder = len(data) % 16
+                if remainder != 0:
+                    f.write(b'\x00' * (16 - remainder))
 
-    archive_size = HEADER_SIZE + total_data_size
+    archive_size = os.path.getsize(outpath)
     print(f"\nBuilt DUNE.DAT: {outpath}")
     print(f"  Files: {entries_written}")
     print(f"  Magic: 0x{count_hint:04X}")
     print(f"  Header: {HEADER_SIZE:,} bytes (64KB)")
-    print(f"  Data: {total_data_size:,} bytes ({total_data_size / 1024 / 1024:.1f} MB)")
+    print(f"  Data: {archive_size - HEADER_SIZE:,} bytes ({(archive_size - HEADER_SIZE) / 1024 / 1024:.1f} MB)")
     print(f"  Total: {archive_size:,} bytes ({archive_size / 1024 / 1024:.1f} MB)")
+    print(f"  Alignment: 16-byte boundaries")
 
 
 def repack(indir: str, outpath: str, manifest_path: str = None):
@@ -533,8 +544,8 @@ def repack(indir: str, outpath: str, manifest_path: str = None):
 def replace_file(dat_path: str, name: str, replacement_path: str, outpath: str):
     """Replace a single file in a DUNE.DAT archive.
 
-    Rebuilds the archive with the specified file replaced. All other files
-    and the file ordering are preserved.
+    Rebuilds the archive with the specified file replaced. All other files,
+    file ordering, and 16-byte alignment are preserved.
 
     Args:
         dat_path: Original DUNE.DAT path
@@ -562,7 +573,7 @@ def replace_file(dat_path: str, name: str, replacement_path: str, outpath: str):
     old_size = entries[target_idx]['size']
     print(f"Replacing {name}: {old_size:,} -> {len(new_data):,} bytes")
 
-    # Rebuild archive
+    # Rebuild archive with 16-byte alignment
     header = bytearray(HEADER_SIZE)
     struct.pack_into('<H', header, 0, struct.unpack_from('<H', dat_data, 0)[0])
 
@@ -584,15 +595,22 @@ def replace_file(dat_path: str, name: str, replacement_path: str, outpath: str):
         header[pos + 24] = entry['flag']
 
         data_chunks.append(file_data)
+        # Advance offset past file data, then align to 16-byte boundary
         data_offset += len(file_data)
+        data_offset = (data_offset + 15) & ~15
         pos += ENTRY_SIZE
 
     with open(outpath, 'wb') as f:
         f.write(header)
-        for chunk in data_chunks:
+        for i, chunk in enumerate(data_chunks):
             f.write(chunk)
+            # Pad to 16-byte boundary between files (not after last file)
+            if i < len(data_chunks) - 1:
+                remainder = len(chunk) % 16
+                if remainder != 0:
+                    f.write(b'\x00' * (16 - remainder))
 
-    total = HEADER_SIZE + sum(len(c) for c in data_chunks)
+    total = os.path.getsize(outpath)
     print(f"Written: {outpath} ({total:,} bytes)")
     return 0
 
