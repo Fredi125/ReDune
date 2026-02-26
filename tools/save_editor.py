@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+#!/usr/bin/env python
 """
 Dune 1992 Save File Editor
 ===========================
@@ -8,19 +8,19 @@ Handles F7 RLE compression/decompression transparently.
 Supports editing globals, troops, and sietches.
 
 Usage:
-  python3 save_editor.py DUNE37S1.SAV                  # Show summary
-  python3 save_editor.py DUNE37S1.SAV --globals         # Show global variables
-  python3 save_editor.py DUNE37S1.SAV --troops          # List all troops
-  python3 save_editor.py DUNE37S1.SAV --troop 5         # Show troop #5 detail
-  python3 save_editor.py DUNE37S1.SAV --sietches        # List all sietches
-  python3 save_editor.py DUNE37S1.SAV --sietch 3        # Show sietch #3 detail
-  python3 save_editor.py DUNE37S1.SAV --set stage=0x50  # Set GameStage
-  python3 save_editor.py DUNE37S1.SAV --set spice=9999  # Set spice (raw value; ×10 = kg)
-  python3 save_editor.py DUNE37S1.SAV --set charisma=255
-  python3 save_editor.py DUNE37S1.SAV --set day=100 --set hour=8
-  python3 save_editor.py DUNE37S1.SAV --set-troop 5 job=4 equip=0xFF
-  python3 save_editor.py DUNE37S1.SAV --set-sietch 3 water=255 spice=255
-  python3 save_editor.py DUNE37S1.SAV -o modified.SAV   # Write to new file
+  python save_editor.py DUNE37S1.SAV                  # Show summary
+  python save_editor.py DUNE37S1.SAV --globals         # Show global variables
+  python save_editor.py DUNE37S1.SAV --troops          # List all troops
+  python save_editor.py DUNE37S1.SAV --troop 5         # Show troop #5 detail
+  python save_editor.py DUNE37S1.SAV --sietches        # List all sietches
+  python save_editor.py DUNE37S1.SAV --sietch 3        # Show sietch #3 detail
+  python save_editor.py DUNE37S1.SAV --set stage=0x50  # Set GameStage
+  python save_editor.py DUNE37S1.SAV --set spice=9999  # Set spice (raw value; ×10 = kg)
+  python save_editor.py DUNE37S1.SAV --set charisma=255
+  python save_editor.py DUNE37S1.SAV --set day=100 --set hour=8
+  python save_editor.py DUNE37S1.SAV --set-troop 5 job=4 equip=0xFF
+  python save_editor.py DUNE37S1.SAV --set-sietch 3 water=255 spice=255
+  python save_editor.py DUNE37S1.SAV -o modified.SAV   # Write to new file
 """
 
 import struct

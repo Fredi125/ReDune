@@ -14,11 +14,28 @@ dune1992-re/
 ├── README.md           ← Project documentation
 ├── lib/                ← Shared Python library
 │   ├── __init__.py
-│   ├── compression.py  ← HSQ decompressor + F7 RLE codec
+│   ├── compression.py  ← HSQ compressor/decompressor + F7 RLE codec
 │   └── constants.py    ← Game constants, offsets, enums
 ├── tools/              ← CLI tools
-│   ├── save_editor.py  ← Read/write save files (F7 RLE, all fields)
+│   ├── save_editor.py       ← Read/write save files (F7 RLE, all fields)
 │   ├── condit_decompiler.py ← CONDIT VM bytecode decompiler
+│   ├── condit_recompiler.py ← CONDIT expression → bytecode compiler
+│   ├── dialogue_decompiler.py ← DIALOGUE.HSQ bytecode decompiler
+│   ├── dialogue_browser.py  ← CONDIT×DIALOGUE×PHRASE cross-reference browser
+│   ├── phrase_dumper.py     ← PHRASE*.HSQ text string extractor
+│   ├── npc_smuggler_decoder.py ← NPC & smuggler save data decoder
+│   ├── sal_decoder.py       ← SAL scene layout decoder
+│   ├── bin_decoder.py       ← BIN file decoder (font, tables, anim)
+│   ├── sprite_decoder.py    ← Sprite/graphics HSQ decoder (palettes, pixels)
+│   ├── map_decoder.py       ← MAP.HSQ world map decoder
+│   ├── command_decoder.py   ← COMMAND.HSQ string table decoder
+│   ├── hnm_decoder.py       ← HNM video decoder (BMP frame + WAV audio export)
+│   ├── lop_decoder.py       ← LOP background animation decoder
+│   ├── herad_decoder.py     ← HERAD music decoder (HSQ/AGD/M32, 30 files + MIDI export)
+│   ├── sound_decoder.py     ← VOC sound effect decoder (+ WAV export)
+│   ├── dat_decoder.py       ← DUNE.DAT archive decoder & repacker (extract/repack/replace)
+│   ├── globdata_decoder.py  ← GLOBDATA.HSQ decoder (gradients + globe projection)
+│   ├── file_index.py        ← Game file catalog (262 files, 18 categories)
 │   └── hsq_decompress.py   ← HSQ file decompressor
 ├── ui/                 ← Web UI
 │   └── save_explorer.jsx   ← React save file explorer
@@ -44,8 +61,17 @@ dune1992-re/
 | 0x5592 | 2 | **DateTime** — bits[3:0]=hour(0-15), bits[15:4]=day |
 | 0x44BE | 2 | Spice stockpile (uint16 LE, ×10 = displayed kg) |
 | 0x4447 | 1 | Charisma (raw; GUI shows value/2) |
+| 0x3338 | ~3960 | Dialogue state (DIALOGUE.HSQ byte 0 spoken flags) |
 | 0x451E | 1960 | Sietch block: 70 × 28 bytes |
 | 0x4CC8 | 1836 | Troop block: 68 × 27 bytes |
+
+### DIALOGUE.HSQ (Dialogue Script Table)
+- **NOT a bytecode VM** — fixed 4-byte record table referencing CONDIT and PHRASE
+- 136 entries, 988 records, 480 unique phrase IDs
+- Record: `[flags+action] [npc_id] [cond_type+menu+phrase_hi] [phrase_lo]`
+- Full CONDIT index = `(cond_type * 256) + npc_id` (types 0/1/2 → indices 0-712)
+- All 713 CONDIT entries are used by dialogue (0 unused)
+- Save offset 0x3338: persists "spoken" flag (bit 7 of byte 0)
 
 ### CONDIT VM (Event Condition System)
 - **CONDIT.HSQ**: 10,907 bytes decompressed, 713 entry offset table → 41 bytecode chains
@@ -87,24 +113,37 @@ python3 tools/condit_decompiler.py samples/CONDIT.HSQ --chains
 - Docstrings with format descriptions
 - Hex values uppercase: `0x4448` not `0x4448`
 
+## Completed Work
+
+- [x] Decode DIALOGUE.HSQ record format → `tools/dialogue_decompiler.py` (136 entries, 988 records, NOT a VM)
+- [x] Full DIALOGUE×CONDIT integration: CONDIT_idx = cond_type*256 + npc_id (all 713 CONDIT entries used)
+- [x] Map DS variables from Cryogenic source → `lib/constants.py`
+- [x] Build CONDIT recompiler → `tools/condit_recompiler.py` (63.7% roundtrip)
+- [x] Decode NPC data block (save offset 0x53F4+) → `tools/npc_smuggler_decoder.py`
+- [x] Map Smuggler data (0x54F6+) → `tools/npc_smuggler_decoder.py`
+- [x] Build SAL scene decoder → `tools/sal_decoder.py`
+- [x] HSQ compressor → `lib/compression.py` (186/186 files roundtrip)
+- [x] Analyze PHRASE*.HSQ → `tools/phrase_dumper.py`
+- [x] Decode BIN files (DNCHAR font, TABLAT, VER, THE_END) → `tools/bin_decoder.py`
+- [x] Decode sprite/graphics HSQ format → `tools/sprite_decoder.py` (palettes, pixel data)
+- [x] Decode MAP.HSQ world map → `tools/map_decoder.py` (320×152 tiles, regions, locations)
+- [x] Decode COMMAND.HSQ string table → `tools/command_decoder.py` (all 186 HSQ files classified)
+- [x] Decode HNM video format → `tools/hnm_decoder.py` (LZ frame decompression, BMP+WAV export)
+- [x] Decode LOP background animations → `tools/lop_decoder.py` (4-phase PackBits, 152×190 blit)
+- [x] Integrate CONDIT×DIALOGUE×PHRASE → `tools/dialogue_browser.py` (cross-reference browser)
+- [x] HERAD music format decoder → `tools/herad_decoder.py` (10 tracks × 3 variants = 30 files)
+- [x] HERAD → MIDI converter → `tools/herad_decoder.py --midi` (all 30 files, all variants)
+- [x] HERAD AGD/M32 variant support → Tandy/PCjr + Roland MT-32 channelized MIDI
+- [x] Decode VOC sound effects → `tools/sound_decoder.py` (6 SN*.HSQ files, WAV export)
+- [x] Build game file catalog → `tools/file_index.py` (262 files, 18 categories)
+- [x] Comprehensive format guide → `docs/file_formats.md` (all formats documented)
+- [x] DUNE.DAT archive decoder → `tools/dat_decoder.py` (2549 files, list/extract/inspect)
+- [x] Decode GLOBDATA.HSQ → `tools/globdata_decoder.py` (55 gradient tables + 64 globe scanlines)
+- [x] DUNE.DAT repacker → `tools/dat_decoder.py --repack/--replace` (round-trip asset modification)
+
 ## Pending Work
 
-### High Priority
-- [ ] Decode DIALOGUE.HSQ bytecode format (likely similar VM to CONDIT)
-- [ ] Map remaining DS variables (0x10-0x12, 0x25-0x26, 0x57, 0x80-0x90 ranges)
-- [ ] Build CONDIT recompiler (bytecodes from expressions)
-- [ ] Integrate CONDIT with DIALOGUE system (cross-reference condition indices)
-
-### Medium Priority
-- [ ] Decode NPC data block (save offset 0x53F4+)
-- [ ] Map Smuggler data (0x54F6+)
-- [ ] Build SAL scene editor/viewer
-- [ ] HSQ compressor (for modified game resources)
-
 ### Low Priority
-- [ ] Analyze PHRASE11.HSQ (dialogue text strings)
-- [ ] HERAD music format decoder
-- [ ] HNM video frame extractor
 - [ ] Complete game state editor (troops + NPCs + smugglers + conditions)
 
 ## External References

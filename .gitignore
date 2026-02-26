@@ -1,0 +1,17 @@
+# Reference repos (cloned for cross-referencing, not project code)
+refs/
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+
+# Temp/output
+/tmp/
+*.bak
+
+# Game archive (too large for git)
+DUNE.DAT
+
+# Voice file subdirectories (CD audio data)
+gamedata/P*/

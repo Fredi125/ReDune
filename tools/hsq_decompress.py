@@ -1,14 +1,14 @@
-#!/usr/bin/env python3
+#!/usr/bin/env python
 """
 Dune 1992 HSQ Decompressor
 ============================
 Decompress HSQ (Cryo Interactive LZ77-variant) compressed game resources.
 
 Usage:
-  python3 hsq_decompress.py CONDIT.HSQ                    # Decompress to CONDIT.bin
-  python3 hsq_decompress.py CONDIT.HSQ -o CONDIT_dec.bin   # Custom output name
-  python3 hsq_decompress.py CONDIT.HSQ --info              # Show header info only
-  python3 hsq_decompress.py *.HSQ                          # Batch decompress
+  python hsq_decompress.py CONDIT.HSQ                    # Decompress to CONDIT.bin
+  python hsq_decompress.py CONDIT.HSQ -o CONDIT_dec.bin   # Custom output name
+  python hsq_decompress.py CONDIT.HSQ --info              # Show header info only
+  python hsq_decompress.py *.HSQ                          # Batch decompress
 """
 
 import sys

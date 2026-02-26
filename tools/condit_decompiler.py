@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+#!/usr/bin/env python
 """
 Dune 1992 CONDIT Bytecode Decompiler
 ======================================
@@ -16,12 +16,12 @@ Architecture (decoded from DNCDPRG.EXE sub_C266/C1DB/C204):
   - Result: non-zero = TRUE (condition met), zero = FALSE
 
 Usage:
-  python3 condit_decompiler.py CONDIT.HSQ              # Decompile all (from HSQ)
-  python3 condit_decompiler.py CONDIT_dec.bin --raw     # Already decompressed
-  python3 condit_decompiler.py CONDIT.HSQ --entry 1     # Single entry
-  python3 condit_decompiler.py CONDIT.HSQ --chains      # Show chain structure
-  python3 condit_decompiler.py CONDIT.HSQ --groups      # Chain summary
-  python3 condit_decompiler.py CONDIT.HSQ --stats       # Statistics
+  python condit_decompiler.py CONDIT.HSQ              # Decompile all (from HSQ)
+  python condit_decompiler.py CONDIT_dec.bin --raw     # Already decompressed
+  python condit_decompiler.py CONDIT.HSQ --entry 1     # Single entry
+  python condit_decompiler.py CONDIT.HSQ --chains      # Show chain structure
+  python condit_decompiler.py CONDIT.HSQ --groups      # Chain summary
+  python condit_decompiler.py CONDIT.HSQ --stats       # Statistics
 """
 
 import struct
