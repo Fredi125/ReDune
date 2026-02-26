@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+#!/usr/bin/env python
 """
 Dune 1992 Dialogue Browser — CONDIT × DIALOGUE × PHRASE Integration Tool
 
@@ -13,12 +13,12 @@ Pipeline:
     phrase_idx → PHRASE*.HSQ text string to display
 
 Usage:
-  python3 dialogue_browser.py gamedata/         # Show all dialogue trees
-  python3 dialogue_browser.py gamedata/ --npc 5 # Show dialogue for NPC #5
-  python3 dialogue_browser.py gamedata/ --entry 9   # Show dialogue entry 9
-  python3 dialogue_browser.py gamedata/ --search "spice"  # Search phrase text
-  python3 dialogue_browser.py gamedata/ --stats     # Cross-reference statistics
-  python3 dialogue_browser.py gamedata/ --lang 2    # French (default: 1=English)
+  python dialogue_browser.py gamedata/         # Show all dialogue trees
+  python dialogue_browser.py gamedata/ --npc 5 # Show dialogue for NPC #5
+  python dialogue_browser.py gamedata/ --entry 9   # Show dialogue entry 9
+  python dialogue_browser.py gamedata/ --search "spice"  # Search phrase text
+  python dialogue_browser.py gamedata/ --stats     # Cross-reference statistics
+  python dialogue_browser.py gamedata/ --lang 2    # French (default: 1=English)
 """
 
 import argparse

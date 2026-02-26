@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+#!/usr/bin/env python
 """
 Dune 1992 PHRASE Text Extractor
 =================================
@@ -22,12 +22,12 @@ File naming convention:
   PHRASE21.HSQ = French bank 0, PHRASE22.HSQ = French bank 1, etc.
 
 Usage:
-  python3 phrase_dumper.py PHRASE11.HSQ                     # Dump all strings
-  python3 phrase_dumper.py PHRASE11.HSQ --index 0x35        # Single string
-  python3 phrase_dumper.py PHRASE11.HSQ --range 0x35-0x5E   # Range of strings
-  python3 phrase_dumper.py PHRASE11.HSQ --search "Gurney"   # Search text
-  python3 phrase_dumper.py PHRASE11.HSQ --stats             # Statistics
-  python3 phrase_dumper.py PHRASE11.HSQ --raw               # Already decompressed
+  python phrase_dumper.py PHRASE11.HSQ                     # Dump all strings
+  python phrase_dumper.py PHRASE11.HSQ --index 0x35        # Single string
+  python phrase_dumper.py PHRASE11.HSQ --range 0x35-0x5E   # Range of strings
+  python phrase_dumper.py PHRASE11.HSQ --search "Gurney"   # Search text
+  python phrase_dumper.py PHRASE11.HSQ --stats             # Statistics
+  python phrase_dumper.py PHRASE11.HSQ --raw               # Already decompressed
 """
 
 import struct

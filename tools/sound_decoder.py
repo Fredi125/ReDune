@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+#!/usr/bin/env python
 """
 Dune 1992 Sound File Decoder
 
@@ -38,8 +38,8 @@ Sound effects:
   SNA.HSQ - Ambient sound (7,692 Hz, looped)
 
 Usage:
-  python3 sound_decoder.py gamedata/SN*.HSQ gamedata/SN*.VOC  # All sound files
-  python3 sound_decoder.py gamedata/SN1.HSQ --wav DIR          # Export to WAV
+  python sound_decoder.py gamedata/SN*.HSQ gamedata/SN*.VOC  # All sound files
+  python sound_decoder.py gamedata/SN1.HSQ --wav DIR          # Export to WAV
 """
 
 import argparse

@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+#!/usr/bin/env python
 """GLOBDATA.HSQ decoder for Dune (1992, Cryo Interactive, CD v3.7).
 
 Decodes the globe rendering data resource containing:
@@ -10,10 +10,10 @@ The RESOURCE_GLOBDATA buffer is dual-purpose:
   - Overwritten at runtime for map terrain histograms
 
 Usage:
-  python3 tools/globdata_decoder.py gamedata/GLOBDATA.HSQ
-  python3 tools/globdata_decoder.py gamedata/GLOBDATA.HSQ --gradients
-  python3 tools/globdata_decoder.py gamedata/GLOBDATA.HSQ --globe
-  python3 tools/globdata_decoder.py gamedata/GLOBDATA.HSQ --globe --verbose
+  python tools/globdata_decoder.py gamedata/GLOBDATA.HSQ
+  python tools/globdata_decoder.py gamedata/GLOBDATA.HSQ --gradients
+  python tools/globdata_decoder.py gamedata/GLOBDATA.HSQ --globe
+  python tools/globdata_decoder.py gamedata/GLOBDATA.HSQ --globe --verbose
 """
 
 import argparse

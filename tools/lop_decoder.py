@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+#!/usr/bin/env python
 """
 Dune 1992 LOP Background Animation Decoder
 
@@ -42,10 +42,10 @@ LOP files in the game:
   SIET.LOP - Generic sietch (~36KB)
 
 Usage:
-  python3 lop_decoder.py gamedata/MNT1.LOP          # Analyze single file
-  python3 lop_decoder.py gamedata/*.LOP --stats      # Summary of all files
-  python3 lop_decoder.py gamedata/MNT1.LOP --section 0  # Detail one section
-  python3 lop_decoder.py gamedata/MNT1.LOP --export DIR  # Export decoded PPM
+  python lop_decoder.py gamedata/MNT1.LOP          # Analyze single file
+  python lop_decoder.py gamedata/*.LOP --stats      # Summary of all files
+  python lop_decoder.py gamedata/MNT1.LOP --section 0  # Detail one section
+  python lop_decoder.py gamedata/MNT1.LOP --export DIR  # Export decoded PPM
 """
 
 import argparse

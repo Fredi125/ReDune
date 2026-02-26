@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+#!/usr/bin/env python
 """
 Dune 1992 HNM Video File Decoder
 
@@ -47,11 +47,11 @@ HNM file structure:
     - OpenRakis graphics.cpp (blitGraphics, PackBits)
 
 Usage:
-  python3 hnm_decoder.py CRYO.HNM                    # Analyze structure
-  python3 hnm_decoder.py gamedata/*.HNM --stats       # Summary table
-  python3 hnm_decoder.py CRYO.HNM --extract frames/   # Extract frames as BMP
-  python3 hnm_decoder.py CRYO.HNM --extract-sound out.wav  # Extract audio
-  python3 hnm_decoder.py CRYO.HNM --palette            # Dump initial palette
+  python hnm_decoder.py CRYO.HNM                    # Analyze structure
+  python hnm_decoder.py gamedata/*.HNM --stats       # Summary table
+  python hnm_decoder.py CRYO.HNM --extract frames/   # Extract frames as BMP
+  python hnm_decoder.py CRYO.HNM --extract-sound out.wav  # Extract audio
+  python hnm_decoder.py CRYO.HNM --palette            # Dump initial palette
 """
 
 import argparse

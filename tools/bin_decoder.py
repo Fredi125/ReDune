@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+#!/usr/bin/env python
 """
 Dune 1992 BIN File Decoder
 =============================
@@ -46,12 +46,12 @@ THE_END.BIN (4096 bytes):
   May be overwritten at runtime with actual remap data.
 
 Usage:
-  python3 bin_decoder.py DNCHAR.BIN              # Decode font
-  python3 bin_decoder.py DNCHAR.BIN --char 65    # Show single character (A)
-  python3 bin_decoder.py TABLAT.BIN              # Decode latitude table
-  python3 bin_decoder.py VER.BIN                 # Decode vertex paths
-  python3 bin_decoder.py THE_END.BIN             # Decode remap table
-  python3 bin_decoder.py DNCHAR.BIN --render     # ASCII-art render of font
+  python bin_decoder.py DNCHAR.BIN              # Decode font
+  python bin_decoder.py DNCHAR.BIN --char 65    # Show single character (A)
+  python bin_decoder.py TABLAT.BIN              # Decode latitude table
+  python bin_decoder.py VER.BIN                 # Decode vertex paths
+  python bin_decoder.py THE_END.BIN             # Decode remap table
+  python bin_decoder.py DNCHAR.BIN --render     # ASCII-art render of font
 """
 
 import struct

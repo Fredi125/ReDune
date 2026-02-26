@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+#!/usr/bin/env python
 """
 Dune 1992 HERAD Music Format Decoder
 
@@ -54,13 +54,13 @@ Game music files (10 tracks x 3 variants = 30 files):
   WORMINTR  - Worm encounter            WORMSUIT - Worm riding
 
 Usage:
-  python3 herad_decoder.py gamedata/ARRAKIS.HSQ           # Analyze single file
-  python3 herad_decoder.py gamedata/ARRAKIS.AGD           # Analyze AGD variant
-  python3 herad_decoder.py gamedata/ARRAKIS.M32           # Analyze M32 variant
-  python3 herad_decoder.py gamedata/*.HSQ --stats          # Summary of all files
-  python3 herad_decoder.py gamedata/ARRAKIS.HSQ --tracks   # Show track details
-  python3 herad_decoder.py gamedata/ARRAKIS.HSQ --events 0 # Dump events for track 0
-  python3 herad_decoder.py gamedata/ARRAKIS.HSQ --midi DIR # Export to MIDI
+  python herad_decoder.py gamedata/ARRAKIS.HSQ           # Analyze single file
+  python herad_decoder.py gamedata/ARRAKIS.AGD           # Analyze AGD variant
+  python herad_decoder.py gamedata/ARRAKIS.M32           # Analyze M32 variant
+  python herad_decoder.py gamedata/*.HSQ --stats          # Summary of all files
+  python herad_decoder.py gamedata/ARRAKIS.HSQ --tracks   # Show track details
+  python herad_decoder.py gamedata/ARRAKIS.HSQ --events 0 # Dump events for track 0
+  python herad_decoder.py gamedata/ARRAKIS.HSQ --midi DIR # Export to MIDI
 """
 
 import argparse

@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+#!/usr/bin/env python
 """
 DUNE.DAT Roundtrip Comparison Tool
 
@@ -12,9 +12,9 @@ what differs and why. Produces a detailed report of:
   - File content differences (byte-for-byte)
 
 Usage:
-  python3 dat_compare.py ORIGINAL.DAT REPACKED.DAT
-  python3 dat_compare.py ORIGINAL.DAT REPACKED.DAT --verbose
-  python3 dat_compare.py ORIGINAL.DAT --dump-header          # Dump raw header entries
+  python dat_compare.py ORIGINAL.DAT REPACKED.DAT
+  python dat_compare.py ORIGINAL.DAT REPACKED.DAT --verbose
+  python dat_compare.py ORIGINAL.DAT --dump-header          # Dump raw header entries
 """
 
 import argparse

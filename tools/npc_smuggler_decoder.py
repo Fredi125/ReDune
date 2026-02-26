@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+#!/usr/bin/env python
 """
 Dune 1992 NPC & Smuggler Save Data Decoder
 =============================================
@@ -17,11 +17,11 @@ Smuggler data block (save offset 0x54F6):
           LaserGunsPrice, WeirdingModulesPrice
 
 Usage:
-  python3 npc_smuggler_decoder.py DUNE37S1.SAV           # Show all NPCs + Smugglers
-  python3 npc_smuggler_decoder.py DUNE37S1.SAV --npcs    # NPCs only
-  python3 npc_smuggler_decoder.py DUNE37S1.SAV --smugglers  # Smugglers only
-  python3 npc_smuggler_decoder.py DUNE37S1.SAV --npc 5   # Single NPC by index
-  python3 npc_smuggler_decoder.py DUNE37S1.SAV --raw     # Include hex dump
+  python npc_smuggler_decoder.py DUNE37S1.SAV           # Show all NPCs + Smugglers
+  python npc_smuggler_decoder.py DUNE37S1.SAV --npcs    # NPCs only
+  python npc_smuggler_decoder.py DUNE37S1.SAV --smugglers  # Smugglers only
+  python npc_smuggler_decoder.py DUNE37S1.SAV --npc 5   # Single NPC by index
+  python npc_smuggler_decoder.py DUNE37S1.SAV --raw     # Include hex dump
 """
 
 import struct

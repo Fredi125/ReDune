@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+#!/usr/bin/env python
 """
 Dune 1992 SAL Scene File Decoder
 ===================================
@@ -45,10 +45,10 @@ Rectangle fill entry:
   word        = Y2
 
 Usage:
-  python3 sal_decoder.py VILG.SAL              # Decode all sections
-  python3 sal_decoder.py PALACE.SAL --section 5  # Single section
-  python3 sal_decoder.py SIET.SAL --stats        # Statistics
-  python3 sal_decoder.py HARK.SAL --raw          # Include raw hex
+  python sal_decoder.py VILG.SAL              # Decode all sections
+  python sal_decoder.py PALACE.SAL --section 5  # Single section
+  python sal_decoder.py SIET.SAL --stats        # Statistics
+  python sal_decoder.py HARK.SAL --raw          # Include raw hex
 """
 
 import struct

@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+#!/usr/bin/env python
 """
 Dune 1992 Game File Index
 
@@ -6,9 +6,9 @@ Comprehensive catalog of all game files (HSQ, VOC, HNM, LOP, SAL, BIN, etc.)
 with classification, format details, and decoder tool references.
 
 Usage:
-  python3 file_index.py gamedata/            # Full index
-  python3 file_index.py gamedata/ --category music     # Filter by category
-  python3 file_index.py gamedata/ --summary            # Category summary
+  python file_index.py gamedata/            # Full index
+  python file_index.py gamedata/ --category music     # Filter by category
+  python file_index.py gamedata/ --summary            # Category summary
 """
 
 import argparse

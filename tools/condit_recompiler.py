@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+#!/usr/bin/env python
 """
 Dune 1992 CONDIT Bytecode Recompiler
 =======================================
@@ -26,10 +26,10 @@ Bytecode encoding (DNCDPRG.EXE sub_C266/C1DB/C204):
     6=ADD(+), 7=SUB(-), 8=AND(&), 9=OR(|)
 
 Usage:
-  python3 condit_recompiler.py "byte[0x2A] == 0x50"
-  python3 condit_recompiler.py "(byte[GameStage] >= 0x38) & (word[0x10] != 0x00)"
-  python3 condit_recompiler.py --file expressions.txt
-  python3 condit_recompiler.py --test CONDIT.HSQ   # Roundtrip test
+  python condit_recompiler.py "byte[0x2A] == 0x50"
+  python condit_recompiler.py "(byte[GameStage] >= 0x38) & (word[0x10] != 0x00)"
+  python condit_recompiler.py --file expressions.txt
+  python condit_recompiler.py --test CONDIT.HSQ   # Roundtrip test
 """
 
 import struct

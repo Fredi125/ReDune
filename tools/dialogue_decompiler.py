@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+#!/usr/bin/env python
 """
 Dune 1992 DIALOGUE Script Table Decompiler
 =============================================
@@ -30,10 +30,10 @@ Architecture (decoded from DNCDPRG.EXE sub_19F9E and OpenRakis ASM):
     directly into this entry table.
 
 Usage:
-  python3 dialogue_decompiler.py DIALOGUE.HSQ             # All entries
-  python3 dialogue_decompiler.py DIALOGUE.HSQ --entry 9   # Single entry
-  python3 dialogue_decompiler.py DIALOGUE.HSQ --stats     # Statistics
-  python3 dialogue_decompiler.py DIALOGUE.HSQ --raw       # Already decompressed
+  python dialogue_decompiler.py DIALOGUE.HSQ             # All entries
+  python dialogue_decompiler.py DIALOGUE.HSQ --entry 9   # Single entry
+  python dialogue_decompiler.py DIALOGUE.HSQ --stats     # Statistics
+  python dialogue_decompiler.py DIALOGUE.HSQ --raw       # Already decompressed
 """
 
 import struct

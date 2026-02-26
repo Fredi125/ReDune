@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+#!/usr/bin/env python
 """
 Dune 1992 DUNE.DAT Archive Decoder & Repacker
 
@@ -22,20 +22,20 @@ DUNE.DAT format:
 Reference: OpenRakis DuneExtractor.cs, ScummVM archive.cpp
 
 Usage:
-  python3 dat_decoder.py DUNE.DAT                       # List all files
-  python3 dat_decoder.py DUNE.DAT --stats                # Summary statistics
-  python3 dat_decoder.py DUNE.DAT --extract outdir/      # Extract + auto-manifest
-  python3 dat_decoder.py DUNE.DAT --find "*.HNM"         # Find files by pattern
-  python3 dat_decoder.py DUNE.DAT --info CONDIT.HSQ       # Show info for one file
-  python3 dat_decoder.py DUNE.DAT --manifest out.txt      # Export manifest with flags
-  python3 dat_decoder.py --repack indir/ -o NEW.DAT -m manifest.txt  # Repack with manifest
-  python3 dat_decoder.py --repack indir/ -o NEW.DAT -m m.txt --verify ORIG.DAT  # Repack + verify
+  python dat_decoder.py DUNE.DAT                       # List all files
+  python dat_decoder.py DUNE.DAT --stats                # Summary statistics
+  python dat_decoder.py DUNE.DAT --extract outdir/      # Extract + auto-manifest
+  python dat_decoder.py DUNE.DAT --find "*.HNM"         # Find files by pattern
+  python dat_decoder.py DUNE.DAT --info CONDIT.HSQ       # Show info for one file
+  python dat_decoder.py DUNE.DAT --manifest out.txt      # Export manifest with flags
+  python dat_decoder.py --repack indir/ -o NEW.DAT -m manifest.txt  # Repack with manifest
+  python dat_decoder.py --repack indir/ -o NEW.DAT -m m.txt --verify ORIG.DAT  # Repack + verify
 
 Roundtrip workflow (byte-identical):
-  1. python3 dat_decoder.py DUNE.DAT --extract gamedata/
+  1. python dat_decoder.py DUNE.DAT --extract gamedata/
      (creates gamedata/manifest.txt with file order, flags, and magic)
-  2. python3 dat_decoder.py --repack gamedata/ -o REPACKED.DAT -m gamedata/manifest.txt
-  3. python3 dat_decoder.py REPACKED.DAT --verify DUNE.DAT
+  2. python dat_decoder.py --repack gamedata/ -o REPACKED.DAT -m gamedata/manifest.txt
+  3. python dat_decoder.py REPACKED.DAT --verify DUNE.DAT
 """
 
 import argparse
