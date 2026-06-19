@@ -151,6 +151,8 @@ npm run build      # production bundle in web/dist/
 - **Text** — view/edit `PHRASE*.HSQ` dialogue and `COMMAND*.HSQ` UI strings (translations/mods),
   re-export a working `.HSQ`.
 - **Audio** — decode and play sound effects (`SN*.HSQ/.VOC`) in-browser; export WAV.
+- **Story** — cross-reference `DIALOGUE.HSQ` × `CONDIT.HSQ` × `PHRASE*.HSQ`: every dialogue option,
+  the condition that gates it, and the line spoken.
 - **Save editor** — load `DUNE*.SAV`, edit globals / troops / sietches, export a working save.
 - **CONDIT studio** — browse & decompile the 713 condition entries, recompile expressions,
   patch in-place and re-export `CONDIT.HSQ` (warns if a non-CONDIT file is loaded).

@@ -6,9 +6,10 @@ import { RoomStudio } from "./ui/RoomStudio";
 import { TextStudio } from "./ui/TextStudio";
 import { MapViewer } from "./ui/MapViewer";
 import { AudioStudio } from "./ui/AudioStudio";
+import { StoryStudio } from "./ui/StoryStudio";
 import { ErrorBoundary, Panel } from "./ui/shared";
 
-type Tab = "sprites" | "rooms" | "map" | "text" | "audio" | "save" | "condit" | "about";
+type Tab = "sprites" | "rooms" | "map" | "text" | "audio" | "story" | "save" | "condit" | "about";
 
 const TABS: { id: Tab; label: string }[] = [
   { id: "sprites", label: "◳ Sprites" },
@@ -16,6 +17,7 @@ const TABS: { id: Tab; label: string }[] = [
   { id: "map", label: "🌍 Map" },
   { id: "text", label: "✎ Text" },
   { id: "audio", label: "♪ Audio" },
+  { id: "story", label: "✦ Story" },
   { id: "save", label: "⚔ Save editor" },
   { id: "condit", label: "⎔ CONDIT studio" },
   { id: "about", label: "ⓘ About" },
@@ -48,6 +50,10 @@ function About() {
           </li>
           <li>
             <b>Audio</b> — decode and play sound effects (<code>SN*.HSQ/.VOC</code>) in-browser; export WAV.
+          </li>
+          <li>
+            <b>Story</b> — cross-reference <code>DIALOGUE.HSQ</code> × <code>CONDIT.HSQ</code> × <code>PHRASE*.HSQ</code>:
+            see every dialogue option, the condition that gates it, and the actual line spoken.
           </li>
           <li>
             <b>Save editor</b> — load <code>DUNE*.SAV</code>, edit globals / troops / sietches, export a working save.
@@ -88,6 +94,7 @@ export function App() {
         {tab === "map" && <MapViewer />}
         {tab === "text" && <TextStudio />}
         {tab === "audio" && <AudioStudio />}
+        {tab === "story" && <StoryStudio />}
         {tab === "save" && <SaveEditor />}
         {tab === "condit" && <ConditStudio />}
         {tab === "about" && <About />}

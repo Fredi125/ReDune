@@ -16,6 +16,7 @@ import { DuneSave } from "../src/codecs/save";
 import { loadSpriteFile, decodeSprite, looksLikeSprite } from "../src/codecs/sprite";
 import { loadSal, encodeSal } from "../src/codecs/sal";
 import { loadTextTable, encodeTextTable, exportTextHsq, bytesToEditable, editableToBytes } from "../src/codecs/text";
+import { loadDialogue } from "../src/codecs/dialogue";
 import { decodeVoc } from "../src/codecs/voc";
 import { heatmapColor, detectMapWidth } from "../src/codecs/map";
 import { hsqDecompress as hsqDec } from "../src/codecs/compression";
@@ -321,6 +322,31 @@ console.log("\nFile-type detection:");
   else skip("BARO sprite detect", "BARO.HSQ missing");
   if (existsSync(condit)) ok("CONDIT.HSQ NOT detected as sprite", !looksLikeSprite(hsqDec(read(condit))));
   else skip("CONDIT non-sprite detect", "CONDIT.HSQ missing");
+}
+
+// ---------------------------------------------------------------------------
+// DIALOGUE table: entry + record counts must match the Python decoder
+// ---------------------------------------------------------------------------
+console.log("\nDIALOGUE table:");
+{
+  const path = join(GD, "DIALOGUE.HSQ");
+  if (!existsSync(path)) skip("DIALOGUE", "DIALOGUE.HSQ missing");
+  else {
+    const df = loadDialogue(read(path));
+    const totalRecords = df.entries.reduce((n, e) => n + e.records.length, 0);
+    ok("DIALOGUE parses", df.entryCount > 0 && totalRecords > 0, `${df.entryCount} entries, ${totalRecords} records`);
+    if (PY) {
+      try {
+        py(
+          `import json,sys;sys.path.insert(0,'.');sys.path.insert(0,'tools')\nfrom dialogue_decompiler import load_dialogue,to_json_obj\nd,c,o=load_dialogue(${JSON.stringify(path)})\nobj=to_json_obj(d,o,'x')\njson.dump({'entries':obj['entry_count'],'records':len(obj['records'])},open('/tmp/redune_dlg.json','w'))`,
+        );
+        const ref = JSON.parse(readFileSync("/tmp/redune_dlg.json", "utf8"));
+        ok("DIALOGUE matches Python", df.entryCount === ref.entries && totalRecords === ref.records, `${df.entryCount}/${totalRecords}`);
+      } catch (e) {
+        skip("DIALOGUE vs Python", String(e));
+      }
+    } else skip("DIALOGUE vs Python", "python3 unavailable");
+  }
 }
 
 // ---------------------------------------------------------------------------

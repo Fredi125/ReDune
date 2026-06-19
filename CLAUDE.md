@@ -43,9 +43,9 @@ dune1992-re/
 ├── ui/                 ← Original single-file React save explorer (snapshot)
 │   └── save_explorer.jsx   ← React save file explorer
 ├── web/                ← Web Asset Studio (Vite + React + TypeScript)
-│   ├── src/codecs/         ← TS ports: compression, sprite, sal, text, voc, map, condit, save (validated vs Python)
-│   ├── src/ui/             ← Sprites, Rooms, Map, Text, Audio, SaveEditor, ConditStudio
-│   └── test/codecs.test.ts ← Byte-for-byte cross-check against lib/ using gamedata (35 checks)
+│   ├── src/codecs/         ← TS ports: compression, sprite, sal, text, voc, map, dialogue, condit, save (validated vs Python)
+│   ├── src/ui/             ← Sprites, Rooms, Map, Text, Audio, Story, SaveEditor, ConditStudio
+│   └── test/codecs.test.ts ← Byte-for-byte cross-check against lib/ using gamedata (37 checks)
 ├── docs/               ← Technical documentation
 │   ├── save_format.md      ← Complete save file map
 │   ├── condit_vm.md        ← CONDIT VM architecture
@@ -184,11 +184,11 @@ python3 tools/condit_decompiler.py samples/CONDIT.HSQ --chains
 - [x] Web Text tab → PHRASE/COMMAND string editor (lossless edit form, re-export .HSQ) for translations/mods
 - [x] Web Map tab → MAP.HSQ heatmap viewer; Web Audio tab → VOC sound playback + WAV export
 - [x] CONDIT studio file-type detection (warns when a sprite/other HSQ is loaded instead of CONDIT)
+- [x] Web Story tab → DIALOGUE×CONDIT×PHRASE cross-reference ("visual novel" tier: option, gating condition, spoken line)
 
 ## Pending Work
 
 ### Medium Priority
-- [ ] Web app: dialogue/story browser (CONDIT×DIALOGUE×PHRASE) — the "visual novel" tier
 - [ ] Improve CONDIT recompiler roundtrip beyond 63.7% (optimal operand-width encoding)
 - [ ] SAL polygon/gradient shading in the room compositor (currently geometry preview only)
 - [ ] True MAP globe projection (via TABLAT) instead of the row-major heatmap

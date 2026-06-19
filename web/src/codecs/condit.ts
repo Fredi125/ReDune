@@ -341,3 +341,19 @@ export function compileExpr(expr: string): Uint8Array {
 export function bytesToHex(b: Uint8Array): string {
   return Array.from(b).map((x) => x.toString(16).toUpperCase().padStart(2, "0")).join(" ");
 }
+
+/** Decompile the condition at a given CONDIT index (empty entry => always true). */
+export function conditionExpr(cf: ConditFile, idx: number, annotate = true): string {
+  if (idx < 0 || idx >= cf.offsets.length) return `CONDIT[${idx}] out of range`;
+  const off = cf.offsets[idx];
+  const end = idx + 1 < cf.offsets.length ? cf.offsets[idx + 1] : cf.data.length;
+  let empty = true;
+  for (let i = off; i < end; i++) {
+    if (cf.data[i] !== 0) {
+      empty = false;
+      break;
+    }
+  }
+  if (empty) return "(always true)";
+  return decompileEntry(cf.data, off, annotate).expr;
+}
