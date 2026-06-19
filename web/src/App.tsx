@@ -55,6 +55,10 @@ function About() {
             <b>globe</b> projected from the GLOBDATA latitude scanlines.
           </li>
           <li>
+            <b>Font</b> — view &amp; edit the <code>DNCHAR.BIN</code> bitmap font (pixel editor + live preview), re-export
+            a byte-identical <code>.BIN</code>.
+          </li>
+          <li>
             <b>Text</b> — view/edit <code>PHRASE*.HSQ</code> dialogue and <code>COMMAND*.HSQ</code> UI strings
             (translations/mods) and re-export a working <code>.HSQ</code>.
           </li>

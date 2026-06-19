@@ -31,3 +31,30 @@ export function glyphPixel(g: Glyph, x: number, y: number): boolean {
   if (y < 0 || y >= FONT_HEIGHT || x < 0 || x > 7) return false;
   return (g.rows[y] & (0x80 >> x)) !== 0;
 }
+
+/** Set/clear a glyph pixel in place. */
+export function setGlyphPixel(g: Glyph, x: number, y: number, on: boolean): void {
+  if (y < 0 || y >= FONT_HEIGHT || x < 0 || x > 7) return;
+  if (on) g.rows[y] |= 0x80 >> x;
+  else g.rows[y] &= ~(0x80 >> x) & 0xff;
+}
+
+/**
+ * Encode glyphs back to a DNCHAR.BIN. Pass the `original` buffer to preserve its
+ * exact length and any trailing partial-glyph bytes the decoder doesn't model —
+ * only the width table and *complete* glyphs are overwritten, so an unedited
+ * round-trip is byte-identical. Without `original`, writes a full 256-glyph file.
+ */
+export function encodeDnchar(glyphs: Glyph[], original?: Uint8Array): Uint8Array {
+  const out = original ? original.slice() : new Uint8Array(256 + 256 * FONT_HEIGHT);
+  for (let i = 0; i < 256; i++) {
+    const g = glyphs[i];
+    if (!g) continue;
+    if (i < out.length) out[i] = g.width & 0xff;
+    const base = 256 + i * FONT_HEIGHT;
+    if (base + FONT_HEIGHT <= out.length) {
+      for (let y = 0; y < FONT_HEIGHT; y++) out[base + y] = (g.rows[y] ?? 0) & 0xff;
+    }
+  }
+  return out;
+}

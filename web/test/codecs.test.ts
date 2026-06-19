@@ -17,7 +17,7 @@ import { loadSpriteFile, decodeSprite, looksLikeSprite, encodeSpriteFile } from 
 import { loadSal, encodeSal } from "../src/codecs/sal";
 import { loadTextTable, encodeTextTable, exportTextHsq, bytesToEditable, editableToBytes } from "../src/codecs/text";
 import { loadDialogue, encodeDialogue } from "../src/codecs/dialogue";
-import { decodeDnchar } from "../src/codecs/font";
+import { decodeDnchar, encodeDnchar } from "../src/codecs/font";
 import { parseDat, extractFile, buildDat, rebuildDat } from "../src/codecs/dat";
 import { loadGradientTables, loadGlobe } from "../src/codecs/globdata";
 import { parseTablat } from "../src/codecs/tablat";
@@ -390,6 +390,7 @@ console.log("\nDNCHAR font:");
   else {
     const glyphs = decodeDnchar(read(path));
     ok("font decodes 256 glyphs", glyphs.length === 256);
+    ok("font re-encode byte-identical", eq(encodeDnchar(glyphs, read(path)), read(path)));
     if (PY) {
       try {
         py(
