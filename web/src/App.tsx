@@ -2,12 +2,14 @@ import { useState } from "react";
 import { SpriteViewer } from "./ui/SpriteViewer";
 import { SaveEditor } from "./ui/SaveEditor";
 import { ConditStudio } from "./ui/ConditStudio";
+import { RoomStudio } from "./ui/RoomStudio";
 import { ErrorBoundary, Panel } from "./ui/shared";
 
-type Tab = "sprites" | "save" | "condit" | "about";
+type Tab = "sprites" | "rooms" | "save" | "condit" | "about";
 
 const TABS: { id: Tab; label: string }[] = [
   { id: "sprites", label: "◳ Sprites" },
+  { id: "rooms", label: "▦ Rooms" },
   { id: "save", label: "⚔ Save editor" },
   { id: "condit", label: "⎔ CONDIT studio" },
   { id: "about", label: "ⓘ About" },
@@ -26,6 +28,10 @@ function About() {
         <ul className="small">
           <li>
             <b>Sprites</b> — decode any sprite <code>*.HSQ</code> (palette + RLE/raw bipixels) to canvas; export PNG.
+          </li>
+          <li>
+            <b>Rooms</b> — decode <code>*.SAL</code> room layouts, render them to canvas with their decoration
+            sprites, edit/add/move sprite placements, and re-export a byte-perfect <code>.SAL</code>.
           </li>
           <li>
             <b>Save editor</b> — load <code>DUNE*.SAV</code>, edit globals / troops / sietches, export a working save.
@@ -62,6 +68,7 @@ export function App() {
       </div>
       <ErrorBoundary key={tab}>
         {tab === "sprites" && <SpriteViewer />}
+        {tab === "rooms" && <RoomStudio />}
         {tab === "save" && <SaveEditor />}
         {tab === "condit" && <ConditStudio />}
         {tab === "about" && <About />}

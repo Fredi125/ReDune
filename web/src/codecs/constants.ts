@@ -112,6 +112,19 @@ export function sietchStatusStr(val: number): string {
   return parts.length ? parts.join(", ") : "Visible";
 }
 
+// Which decoration sprite sheet pairs with each SAL room file (normal mode).
+// From calc_SAL_index in DNCDPRG.ASM (lib/constants.py SAL_SPRITE_NORMAL).
+export const SAL_DECORATION: Record<string, string> = {
+  "SIET.SAL": "MAP2.HSQ",
+  "PALACE.SAL": "MIRROR.HSQ",
+  "VILG.SAL": "DS0.HSQ",
+  "HARK.SAL": "DS1.HSQ",
+};
+
+export function recommendedDecoration(salName: string): string | undefined {
+  return SAL_DECORATION[salName.toUpperCase()];
+}
+
 // CONDIT VM operations: index -> [name, symbol, description]
 export const CONDIT_OPS: Record<number, [string, string, string]> = {
   0x00: ["EQ", "==", "dx == ax"],
