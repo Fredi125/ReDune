@@ -19,6 +19,7 @@ String categories (by index range):
 """
 
 import argparse
+import json
 import os
 import struct
 import sys
@@ -62,6 +63,8 @@ def main():
                         help='Search for strings containing TEXT')
     parser.add_argument('--stats', action='store_true',
                         help='Show statistics')
+    parser.add_argument('--json', nargs='?', const='-', default=None, metavar='FILE',
+                        help='Write JSON to FILE (or stdout if no path given)')
     args = parser.parse_args()
 
     raw = open(args.file, 'rb').read()
@@ -69,6 +72,21 @@ def main():
     strings = decode_strings(data)
 
     basename = os.path.splitext(os.path.basename(args.file))[0]
+
+    if args.json is not None:
+        obj = {
+            'file': args.file,
+            'count': len(strings),
+            'strings': [{'index': i, 'text': s} for i, s in enumerate(strings)],
+        }
+        if args.json == '-':
+            json.dump(obj, sys.stdout, indent=2)
+            sys.stdout.write('\n')
+        else:
+            with open(args.json, 'w') as fh:
+                json.dump(obj, fh, indent=2)
+            print(f"Wrote JSON: {args.json}")
+        return 0
 
     if args.stats:
         print(f"File: {args.file}")

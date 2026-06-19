@@ -23,12 +23,14 @@ Sprite header (4 bytes):
 """
 
 import argparse
+import json
 import os
 import struct
 import sys
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'lib'))
 from compression import hsq_decompress
+from png import encode_png, encode_png_rgba
 
 
 def decode_palette(data, pal_end):
@@ -207,6 +209,176 @@ def sprite_to_ppm(sprite, palette, outpath):
     return True
 
 
+def sprite_to_rgb(sprite: dict, palette: dict) -> bytes:
+    """Flatten a decoded sprite's pixels to a 24-bit RGB buffer.
+
+    Mapped palette indices use their color; unmapped indices render black.
+    Returns width*height*3 bytes (row-major).
+    """
+    buf = bytearray()
+    for idx in sprite['pixels']:
+        if idx in palette:
+            r, g, b = palette[idx]
+        else:
+            r = g = b = 0  # unmapped → black
+        buf += bytes((r, g, b))
+    return bytes(buf)
+
+
+def sprite_to_rgba(sprite: dict, palette: dict, opaque: bool = False) -> bytes:
+    """Flatten a decoded sprite's pixels to a 32-bit RGBA buffer.
+
+    Palette index 0 is treated as transparent (alpha 0) unless ``opaque`` is
+    set. Mapped indices use their color (opaque); unmapped non-zero indices
+    render as opaque black. Returns width*height*4 bytes (row-major).
+    """
+    buf = bytearray()
+    for idx in sprite['pixels']:
+        if idx == 0 and not opaque:
+            buf += b'\x00\x00\x00\x00'  # transparent
+            continue
+        if idx in palette:
+            r, g, b = palette[idx]
+        else:
+            r = g = b = 0  # unmapped → opaque black
+        buf += bytes((r, g, b, 255))
+    return bytes(buf)
+
+
+def export_pngs(data: bytes, n_sprites: int, palette: dict, outdir: str,
+                basename: str, opaque: bool = False) -> int:
+    """Export each non-empty sprite as a separate RGBA PNG.
+
+    Returns the number of PNGs written. Empty sprites (0 width/height) are
+    skipped. Decode errors are reported to stderr and skipped.
+    """
+    os.makedirs(outdir, exist_ok=True)
+    exported = 0
+    for i in range(n_sprites):
+        try:
+            spr = decode_sprite(data, i)
+        except Exception as e:
+            print(f"  Sprite {i}: error: {e}", file=sys.stderr)
+            continue
+        w, h = spr['width'], spr['height']
+        if w == 0 or h == 0:
+            continue
+        rgba = sprite_to_rgba(spr, palette, opaque=opaque)
+        outpath = os.path.join(outdir, f'{basename}_{i:03d}.png')
+        with open(outpath, 'wb') as f:
+            f.write(encode_png_rgba(w, h, rgba))
+        exported += 1
+    return exported
+
+
+def _shelf_pack(boxes: list, max_width: int) -> tuple:
+    """Pack (index, w, h) boxes into shelves; return (placements, sheet_w, sheet_h).
+
+    Simple row/shelf packer: sort by descending height, lay left-to-right,
+    wrap to a new shelf when a box would exceed ``max_width``. Returns a list
+    of (index, x, y, w, h) placements plus the resulting sheet dimensions.
+    """
+    order = sorted(boxes, key=lambda b: (-b[2], -b[1]))
+    placements = []
+    x = 0
+    y = 0
+    shelf_h = 0
+    sheet_w = 0
+    for idx, w, h in order:
+        if x + w > max_width and x > 0:
+            # Wrap to next shelf
+            y += shelf_h
+            x = 0
+            shelf_h = 0
+        placements.append((idx, x, y, w, h))
+        x += w
+        shelf_h = max(shelf_h, h)
+        sheet_w = max(sheet_w, x)
+    sheet_h = y + shelf_h
+    return placements, sheet_w, sheet_h
+
+
+def export_atlas(data: bytes, n_sprites: int, palette: dict, outdir: str,
+                 basename: str, opaque: bool = False) -> dict:
+    """Pack all non-empty sprites into one PNG sheet + a JSON atlas.
+
+    Writes ``<basename>.png`` (the sheet) and ``<basename>.json`` (the atlas
+    metadata) into ``outdir``. The atlas JSON has the schema:
+      {"file": <png name>, "palette_colors": N,
+       "sprites": [{"index", "x", "y", "w", "h", "palette_offset"} ...]}
+
+    Returns the atlas dict. Sprites are shelf-packed (transparent gaps).
+    """
+    os.makedirs(outdir, exist_ok=True)
+
+    # Decode all non-empty sprites up front.
+    decoded = []  # (index, sprite_dict)
+    for i in range(n_sprites):
+        try:
+            spr = decode_sprite(data, i)
+        except Exception as e:
+            print(f"  Sprite {i}: error: {e}", file=sys.stderr)
+            continue
+        if spr['width'] > 0 and spr['height'] > 0:
+            decoded.append((i, spr))
+
+    png_name = f'{basename}.png'
+    json_path = os.path.join(outdir, f'{basename}.json')
+
+    if not decoded:
+        # Nothing to pack: emit a 1x1 transparent sheet + empty atlas.
+        atlas = {"file": png_name, "palette_colors": len(palette), "sprites": []}
+        with open(os.path.join(outdir, png_name), 'wb') as f:
+            f.write(encode_png_rgba(1, 1, b'\x00\x00\x00\x00'))
+        with open(json_path, 'w') as f:
+            json.dump(atlas, f, indent=2)
+        return atlas
+
+    # Choose a sheet width: aim for a roughly square sheet by total area.
+    total_area = sum(s['width'] * s['height'] for _, s in decoded)
+    widest = max(s['width'] for _, s in decoded)
+    import math
+    target = max(widest, int(math.sqrt(total_area) * 1.3) + 1)
+
+    boxes = [(i, s['width'], s['height']) for i, s in decoded]
+    placements, sheet_w, sheet_h = _shelf_pack(boxes, target)
+
+    if sheet_w == 0 or sheet_h == 0:
+        sheet_w = max(1, widest)
+        sheet_h = max(1, max(s['height'] for _, s in decoded))
+
+    # Compose the sheet (RGBA, transparent background).
+    sheet = bytearray(sheet_w * sheet_h * 4)
+    by_index = {i: s for i, s in decoded}
+    sprites_meta = []
+    for idx, x, y, w, h in placements:
+        spr = by_index[idx]
+        rgba = sprite_to_rgba(spr, palette, opaque=opaque)
+        for row in range(h):
+            dst = ((y + row) * sheet_w + x) * 4
+            src = row * w * 4
+            sheet[dst:dst + w * 4] = rgba[src:src + w * 4]
+        sprites_meta.append({
+            "index": idx,
+            "x": x, "y": y, "w": w, "h": h,
+            "palette_offset": spr['palette_offset'],
+        })
+
+    sprites_meta.sort(key=lambda m: m["index"])
+    atlas = {
+        "file": png_name,
+        "palette_colors": len(palette),
+        "sprites": sprites_meta,
+    }
+
+    with open(os.path.join(outdir, png_name), 'wb') as f:
+        f.write(encode_png_rgba(sheet_w, sheet_h, bytes(sheet)))
+    with open(json_path, 'w') as f:
+        json.dump(atlas, f, indent=2)
+
+    return atlas
+
+
 def main():
     parser = argparse.ArgumentParser(description='Dune 1992 Sprite HSQ Decoder')
     parser.add_argument('file', help='Sprite HSQ file (e.g. CHAN.HSQ)')
@@ -218,6 +390,15 @@ def main():
                         help='Show file statistics')
     parser.add_argument('--export', metavar='DIR',
                         help='Export sprites as PPM images to directory')
+    parser.add_argument('--png', metavar='DIR',
+                        help='Export each sprite as a separate RGBA PNG '
+                             '(palette index 0 = transparent)')
+    parser.add_argument('--atlas', metavar='DIR',
+                        help='Pack all non-empty sprites into one PNG sheet '
+                             'plus a sibling <basename>.json atlas')
+    parser.add_argument('--opaque', action='store_true',
+                        help='Make PNG/atlas output fully opaque '
+                             '(do not treat palette index 0 as transparent)')
     parser.add_argument('--ascii', type=int, metavar='N',
                         help='ASCII-art preview of sprite N')
     args = parser.parse_args()
@@ -311,6 +492,19 @@ def main():
             except Exception as e:
                 print(f"  Sprite {i}: error: {e}", file=sys.stderr)
         print(f"Exported {exported}/{n_sprites} sprites to {args.export}/")
+        return 0
+
+    if args.png:
+        exported = export_pngs(data, n_sprites, palette, args.png, basename,
+                               opaque=args.opaque)
+        print(f"Exported {exported}/{n_sprites} sprite PNGs to {args.png}/")
+        return 0
+
+    if args.atlas:
+        atlas = export_atlas(data, n_sprites, palette, args.atlas, basename,
+                             opaque=args.opaque)
+        print(f"Packed {len(atlas['sprites'])}/{n_sprites} sprites into "
+              f"{args.atlas}/{basename}.png + {basename}.json")
         return 0
 
     # Default: summary

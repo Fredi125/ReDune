@@ -17,3 +17,11 @@ DUNE.DAT
 gamedata/P*/
 DUNE_NEW.DAT
 REPACKED.DAT
+
+# Web app build artifacts / deps (see web/.gitignore for the rest)
+web/node_modules/
+web/dist/
+
+# Bulk asset-export output (tools/extract_all.py) — derived game data, never committed
+extracted/
+*.ppm

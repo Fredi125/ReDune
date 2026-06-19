@@ -15,9 +15,10 @@ dune1992-re/
 ├── lib/                ← Shared Python library
 │   ├── __init__.py
 │   ├── compression.py  ← HSQ compressor/decompressor + F7 RLE codec
+│   ├── png.py          ← Pure-stdlib PNG writer (RGB/RGBA) for export tools
 │   └── constants.py    ← Game constants, offsets, enums
-├── tools/              ← CLI tools
-│   ├── save_editor.py       ← Read/write save files (F7 RLE, all fields)
+├── tools/              ← CLI tools (decoders, encoders, exporters)
+│   ├── save_editor.py       ← Read/write save files (F7 RLE, all fields; --json)
 │   ├── condit_decompiler.py ← CONDIT VM bytecode decompiler
 │   ├── condit_recompiler.py ← CONDIT expression → bytecode compiler
 │   ├── dialogue_decompiler.py ← DIALOGUE.HSQ bytecode decompiler
@@ -25,8 +26,10 @@ dune1992-re/
 │   ├── phrase_dumper.py     ← PHRASE*.HSQ text string extractor
 │   ├── npc_smuggler_decoder.py ← NPC & smuggler save data decoder
 │   ├── sal_decoder.py       ← SAL scene layout decoder
-│   ├── bin_decoder.py       ← BIN file decoder (font, tables, anim)
-│   ├── sprite_decoder.py    ← Sprite/graphics HSQ decoder (palettes, pixels)
+│   ├── sal_encoder.py       ← SAL scene layout ENCODER (100% byte-identical round-trip)
+│   ├── extract_all.py       ← Batch pipeline → web-ready PNG/WAV/JSON + manifest
+│   ├── bin_decoder.py       ← BIN file decoder (font, tables, anim; --png)
+│   ├── sprite_decoder.py    ← Sprite/graphics HSQ decoder (palettes, pixels; --png/--atlas)
 │   ├── map_decoder.py       ← MAP.HSQ world map decoder
 │   ├── command_decoder.py   ← COMMAND.HSQ string table decoder
 │   ├── hnm_decoder.py       ← HNM video decoder (BMP frame + WAV audio export)
@@ -37,8 +40,12 @@ dune1992-re/
 │   ├── globdata_decoder.py  ← GLOBDATA.HSQ decoder (gradients + globe projection)
 │   ├── file_index.py        ← Game file catalog (262 files, 18 categories)
 │   └── hsq_decompress.py   ← HSQ file decompressor
-├── ui/                 ← Web UI
+├── ui/                 ← Original single-file React save explorer (snapshot)
 │   └── save_explorer.jsx   ← React save file explorer
+├── web/                ← Web Asset Studio (Vite + React + TypeScript)
+│   ├── src/codecs/         ← TS ports: compression, sprite, condit, save (validated vs Python)
+│   ├── src/ui/             ← SpriteViewer, SaveEditor, ConditStudio
+│   └── test/codecs.test.ts ← Byte-for-byte cross-check against lib/ using gamedata
 ├── docs/               ← Technical documentation
 │   ├── save_format.md      ← Complete save file map
 │   ├── condit_vm.md        ← CONDIT VM architecture
@@ -164,11 +171,26 @@ python3 tools/condit_decompiler.py samples/CONDIT.HSQ --chains
 - [x] Decode GLOBDATA.HSQ → `tools/globdata_decoder.py` (55 gradient tables + 64 globe scanlines)
 - [x] DUNE.DAT repacker → `tools/dat_decoder.py --repack/--replace` (round-trip asset modification)
 - [x] Decode room layout architecture → `lib/constants.py` (calc_SAL_index @ CS1:0x5E4F, appearance→SAL mapping)
+- [x] Pure-stdlib PNG writer → `lib/png.py` (RGB/RGBA, used by all image exporters)
+- [x] Sprite PNG/atlas export → `tools/sprite_decoder.py --png/--atlas` (PNG sheets + JSON atlas)
+- [x] Image export for LOP / MAP / font → `--png` on `lop_decoder.py`, `map_decoder.py`, `bin_decoder.py`
+- [x] JSON exporters → `--json` on condit/dialogue/phrase/command/save (machine-readable for the web app)
+- [x] SAL scene ENCODER → `tools/sal_encoder.py` (**100% byte-identical round-trip on all 4 SAL files**)
+- [x] Asset pipeline → `tools/extract_all.py` (gamedata → PNG/WAV/JSON + manifest, 166/265 auto-extracted)
+- [x] Web Asset Studio → `web/` (Vite+React+TS; viewer/editor/recompiler, all in-browser)
+- [x] TypeScript codec ports → `web/src/codecs/` (HSQ, F7, sprite, save, CONDIT decompile+recompile)
+- [x] Codec parity tests → `web/test/codecs.test.ts` (18 checks, byte-for-byte vs Python on real game files)
 
 ## Pending Work
 
+### Medium Priority
+- [ ] Web app: SAL room compositor (combine `sal_decoder` layout + sprites onto canvas)
+- [ ] Web app: dialogue/story browser (CONDIT×DIALOGUE×PHRASE) — the "visual novel" tier
+- [ ] Improve CONDIT recompiler roundtrip beyond 63.7% (optimal operand-width encoding)
+
 ### Low Priority
-- [ ] Complete game state editor (troops + NPCs + smugglers + conditions)
+- [ ] Sprite re-encoder (image → HSQ sprite) for full graphic-mod round-trips
+- [ ] Complete game state editor (NPCs + smugglers in the web UI)
 
 ## External References
 

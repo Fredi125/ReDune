@@ -59,6 +59,9 @@ import sys
 import argparse
 import os
 
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'lib'))
+from png import encode_png
+
 
 # =============================================================================
 # DNCHAR FONT DECODER
@@ -163,6 +166,57 @@ def show_dnchar(data: bytes, char_idx: int = None, do_render: bool = False):
                 has_data = any(r != 0 for r in ch["rows"])
                 line_parts.append(f"'{label}'w={ch['width']}")
             print(f"  [{i:3d}] {' '.join(line_parts)}")
+
+
+DNCHAR_ATLAS_COLS = 16        # Glyphs per row in the exported atlas
+DNCHAR_ATLAS_ROWS = 16        # 16 × 16 = 256 glyphs
+DNCHAR_ATLAS_PAD = 1          # 1px black gap between/around cells
+
+
+def export_dnchar_png(data: bytes, outpath: str) -> tuple:
+    """Export a DNCHAR font as a glyph-atlas PNG.
+
+    Lays all 256 glyphs out in a 16×16 grid. Each cell is 8 pixels wide × 9
+    tall (a glyph row byte is 8 pixels, MSB = leftmost; height is always 9).
+    A 1px black border surrounds the grid and separates every cell, so the
+    full image is (cols×(8+pad)+pad) × (rows×(9+pad)+pad) pixels. Glyph pixels
+    are rendered white (0xFF) on a black (0x00) background.
+
+    Returns the (width, height) of the written image.
+    """
+    chars = decode_dnchar(data)
+
+    cell_w, cell_h = 8, DNCHAR_CHAR_SIZE  # 8 × 9
+    pad = DNCHAR_ATLAS_PAD
+    cols, rows = DNCHAR_ATLAS_COLS, DNCHAR_ATLAS_ROWS
+
+    width = cols * (cell_w + pad) + pad
+    height = rows * (cell_h + pad) + pad
+
+    rgb = bytearray(width * height * 3)  # zero-init => black background/padding
+
+    for idx in range(256):
+        ch = chars[idx]
+        gx = idx % cols
+        gy = idx // cols
+        # Top-left pixel of this cell's glyph area (inside the padding).
+        cell_x = pad + gx * (cell_w + pad)
+        cell_y = pad + gy * (cell_h + pad)
+
+        for row in range(cell_h):
+            row_byte = ch["rows"][row]
+            py = cell_y + row
+            for bit in range(8):
+                if (row_byte >> (7 - bit)) & 1:
+                    px = cell_x + bit
+                    j = (py * width + px) * 3
+                    rgb[j] = 0xFF
+                    rgb[j + 1] = 0xFF
+                    rgb[j + 2] = 0xFF
+
+    with open(outpath, 'wb') as f:
+        f.write(encode_png(width, height, bytes(rgb)))
+    return (width, height)
 
 
 # =============================================================================
@@ -384,6 +438,10 @@ def main():
                    help='Show single font character by index (DNCHAR only)')
     p.add_argument('--render', action='store_true',
                    help='ASCII-art render of font glyphs (DNCHAR only)')
+    p.add_argument('--png', type=str, metavar='FILE', default=None,
+                   help='Export a DNCHAR font as a glyph-atlas PNG (16×16 grid '
+                        'of 8×9 cells, 1px black padding, white glyphs on black; '
+                        'DNCHAR fonts only)')
     p.add_argument('--raw', action='store_true',
                    help='Include raw hex dump')
     args = p.parse_args()
@@ -393,6 +451,18 @@ def main():
 
     basename = os.path.basename(args.file).upper()
     print(f"  Loaded: {os.path.basename(args.file)} — {len(data):,} bytes\n")
+
+    is_dnchar = basename in ("DNCHAR.BIN", "DNCHAR2.BIN") or len(data) == 2304
+
+    # PNG export only supports DNCHAR fonts.
+    if args.png is not None:
+        if not is_dnchar:
+            print("--png only supports DNCHAR fonts "
+                  "(DNCHAR.BIN / DNCHAR2.BIN or 2304-byte files).")
+            return 1
+        w, h = export_dnchar_png(data, args.png)
+        print(f"Wrote glyph atlas PNG {args.png}: {w} x {h}")
+        return 0
 
     # Try filename match first
     handler = FILE_HANDLERS.get(basename)
@@ -407,7 +477,7 @@ def main():
         sys.exit(1)
 
     # DNCHAR handlers take extra args
-    if basename in ("DNCHAR.BIN", "DNCHAR2.BIN") or len(data) == 2304:
+    if is_dnchar:
         handler(data, char_idx=args.char, do_render=args.render)
     else:
         handler(data)
@@ -420,4 +490,4 @@ def main():
 
 
 if __name__ == '__main__':
-    main()
+    sys.exit(main() or 0)

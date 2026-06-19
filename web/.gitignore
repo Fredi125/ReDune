@@ -1,0 +1,8 @@
+node_modules/
+dist/
+# Game assets are never committed — symlink or copy your own files here for
+# quick loading during dev (the app primarily loads via file upload).
+# Pattern without trailing slash also matches a symlink named "game".
+public/game
+public/game/
+*.local

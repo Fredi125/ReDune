@@ -53,6 +53,9 @@ import os
 import struct
 import sys
 
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'lib'))
+from png import encode_png
+
 
 # =============================================================================
 # LOP FILE PARSER
@@ -341,6 +344,54 @@ def export_sections(filepath: str, data: bytes, outdir: str):
     print(f"Exported {exported}/{SECTION_COUNT} sections to {outdir}/")
 
 
+def export_section_png(sec: dict, pixels: bytearray, outpath: str) -> bool:
+    """Write decoded section as a greyscale PNG image.
+
+    LOP pixels are bare palette indices with no embedded palette, so each
+    index is rendered as a grey level (R=G=B=index), matching the PPM exporter.
+    """
+    w, h = sec['width'], sec['height']
+    if w == 0 or h == 0:
+        return False
+
+    rgb = bytearray(w * h * 3)
+    j = 0
+    for p in pixels:
+        rgb[j] = p
+        rgb[j + 1] = p
+        rgb[j + 2] = p
+        j += 3
+
+    with open(outpath, 'wb') as f:
+        f.write(encode_png(w, h, bytes(rgb)))
+    return True
+
+
+def export_sections_png(filepath: str, data: bytes, outdir: str):
+    """Export all sections as greyscale PNG images."""
+    os.makedirs(outdir, exist_ok=True)
+    header = parse_lop_header(data)
+    fname = os.path.splitext(os.path.basename(filepath))[0]
+    exported = 0
+
+    for si in range(SECTION_COUNT):
+        offset = header['section_offsets'][si]
+        next_off = header['section_offsets'][si + 1] if si + 1 < SECTION_COUNT else None
+        sec = parse_section(data, header['header_size'], offset, next_off, len(data))
+
+        if 'error' in sec:
+            print(f"  Section {si}: {sec['error']}", file=sys.stderr)
+            continue
+
+        pixels = decode_section_pixels(sec)
+        outpath = os.path.join(outdir, f'{fname}_sec{si}.png')
+        if export_section_png(sec, pixels, outpath):
+            exported += 1
+            print(f"  Section {si}: {outpath}")
+
+    print(f"Exported {exported}/{SECTION_COUNT} sections to {outdir}/")
+
+
 # =============================================================================
 # MAIN
 # =============================================================================
@@ -358,6 +409,8 @@ def main():
                    help='Show decoded pixel statistics')
     p.add_argument('--export', metavar='DIR',
                    help='Export decoded sections as PPM images')
+    p.add_argument('--png', metavar='DIR',
+                   help='Export decoded sections as greyscale PNG images')
     args = p.parse_args()
 
     if args.stats:
@@ -379,6 +432,8 @@ def main():
             show_section(filepath, data, args.section)
         elif args.export:
             export_sections(filepath, data, args.export)
+        elif args.png:
+            export_sections_png(filepath, data, args.png)
         else:
             show_file(filepath, data, args.verbose)
 

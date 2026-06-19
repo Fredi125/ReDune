@@ -128,13 +128,43 @@ python3 tools/hsq_decompress.py CONDIT.HSQ --info           # header only
 
 Interactive React dashboard for exploring save file data. Shows globals, troops (with skill bars and filtering), sietches, and CONDIT bytecode chains.
 
+### Web Asset Studio (`web/`)
+
+A fully client-side **viewer / editor / recompiler** (React + Vite + TypeScript).
+Every codec is a TypeScript port of the Python tools, **validated byte-for-byte**
+against them (`npm test` cross-checks against `lib/` using the real game files).
+Nothing is uploaded — you load your own legal game files and everything is
+decoded in the browser.
+
+```bash
+cd web
+npm install
+npm run dev        # http://localhost:5173
+npm test           # validate TS codecs vs the Python reference
+npm run build      # production bundle in web/dist/
+```
+
+- **Sprites** — decode any sprite `*.HSQ` (palette + RLE/raw bipixels) to canvas, export PNG.
+- **Save editor** — load `DUNE*.SAV`, edit globals / troops / sietches, export a working save.
+- **CONDIT studio** — browse & decompile the 713 condition entries, recompile expressions,
+  patch in-place and re-export `CONDIT.HSQ`.
+
+To enable the one-click "Load sample" buttons during dev, symlink your game files
+into the (git-ignored) assets dir:
+
+```bash
+ln -s "$(pwd)/../gamedata" web/public/game
+```
+
 ## Architecture
 
 ```
 lib/compression.py  — HSQ compressor/decompressor, F7 RLE codec
+lib/png.py          — pure-stdlib PNG writer (used by the export tools)
 lib/constants.py    — Save offsets, game stages, DS variable map, equipment flags
-tools/              — CLI tools built on lib/
-ui/                 — React visualization
+tools/              — CLI tools built on lib/ (decoders, encoders, exporters, extract_all)
+ui/                 — Original single-file React save explorer (snapshot)
+web/                — Web Asset Studio: in-browser viewer/editor/recompiler (TS codec ports)
 docs/               — Format specifications
 ```
 

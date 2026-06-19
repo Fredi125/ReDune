@@ -29,8 +29,13 @@ import sys
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'lib'))
 from compression import hsq_decompress
+from png import encode_png
 
 RES_MAP_SIZE = 0x0C5F9  # 50681 bytes
+
+# Auto-detected row widths tried for layout (same set as --render).
+MAP_RENDER_WIDTHS = [200, 304, 320, 400, 500]
+MAP_DEFAULT_WIDTH = 320
 
 
 def analyze_map(data):
@@ -134,6 +139,87 @@ def render_map_ascii(data, width=200, height=100):
         print(''.join(line))
 
 
+def detect_map_width(size: int) -> int:
+    """Auto-detect the map row width.
+
+    Tries 200/304/320/400/500 in order and returns the first that divides the
+    data size with remainder < 10 (the same heuristic as --render). Falls back
+    to 0x140 (320) when none fit.
+    """
+    for w in MAP_RENDER_WIDTHS:
+        if size % w < 10:
+            return w
+    return MAP_DEFAULT_WIDTH
+
+
+def map_heatmap_color(val: int) -> tuple:
+    """Map a terrain byte (0x00-0xFF) to an (R, G, B) heatmap color.
+
+    Deterministic 256-entry gradient running low->high:
+      - 0x00-0x3F  black -> blue          (deep sand / lowest values)
+      - 0x40-0x7F  blue  -> green         (low-mid terrain)
+      - 0x80-0xBF  green -> yellow        (mid-high terrain)
+      - 0xC0-0xFF  yellow -> red -> white (rock / highest values)
+    Each band linearly interpolates between its two anchor colors so that
+    the full 0x00..0xFF range spans black/blue (low) to red/white (high).
+    """
+    if val < 0x40:
+        # black (0,0,0) -> blue (0,0,255)
+        t = val / 0x3F
+        return (0, 0, int(255 * t))
+    if val < 0x80:
+        # blue (0,0,255) -> green (0,255,0)
+        t = (val - 0x40) / 0x3F
+        return (0, int(255 * t), int(255 * (1 - t)))
+    if val < 0xC0:
+        # green (0,255,0) -> yellow (255,255,0)
+        t = (val - 0x80) / 0x3F
+        return (int(255 * t), 255, 0)
+    # yellow (255,255,0) -> red (255,0,0) -> white (255,255,255)
+    t = (val - 0xC0) / 0x3F
+    if t < 0.5:
+        # yellow -> red: drop green
+        u = t / 0.5
+        return (255, int(255 * (1 - u)), 0)
+    # red -> white: raise green and blue
+    u = (t - 0.5) / 0.5
+    return (255, int(255 * u), int(255 * u))
+
+
+def render_map_png(data: bytes, outpath: str, width: int = None) -> tuple:
+    """Render raw MAP bytes to an indexed heatmap PNG.
+
+    v1 heatmap: map bytes are laid out row-major at width W (auto-detected like
+    --render: the first of 200/304/320/400/500 whose remainder against the data
+    size is < 10, else 320, unless overridden via ``width``). Each terrain byte
+    is mapped to an RGB color via the fixed :func:`map_heatmap_color` gradient
+    (low = black/blue sand, mid = green/yellow, high = red/white rock). The final
+    partial row is padded with black (0, 0, 0) so the RGB buffer is exactly
+    width*height*3 bytes.
+
+    Returns the chosen (width, height).
+    """
+    size = len(data)
+    w = width if width else detect_map_width(size)
+    h = (size + w - 1) // w  # round up to cover the final partial row
+
+    # Precompute the 256-entry palette once.
+    palette = [map_heatmap_color(v) for v in range(256)]
+
+    rgb = bytearray(w * h * 3)  # zero-initialised => black padding on tail
+    j = 0
+    for b in data:
+        r, g, bl = palette[b]
+        rgb[j] = r
+        rgb[j + 1] = g
+        rgb[j + 2] = bl
+        j += 3
+
+    with open(outpath, 'wb') as f:
+        f.write(encode_png(w, h, bytes(rgb)))
+    return (w, h)
+
+
 def main():
     parser = argparse.ArgumentParser(description='Dune 1992 MAP.HSQ Decoder')
     parser.add_argument('file', help='MAP.HSQ file')
@@ -145,6 +231,16 @@ def main():
                         help='Hex dump at offset (decimal or 0x hex)')
     parser.add_argument('--render', action='store_true',
                         help='ASCII art rendering of map data')
+    parser.add_argument('--png', type=str, metavar='FILE', default=None,
+                        help='Render map bytes to a heatmap PNG file. v1 heatmap: '
+                             'bytes laid out row-major at width W (auto-detected '
+                             'like --render: first of 200/304/320/400/500 dividing '
+                             'the size, else 320; override with --png-width); each '
+                             'terrain byte -> RGB via a fixed gradient '
+                             '(low=black/blue sand, mid=green/yellow, high=red/white '
+                             'rock). Final partial row padded with black.')
+    parser.add_argument('--png-width', type=int, default=None, metavar='W',
+                        help='Override the auto-detected PNG row width')
     parser.add_argument('--width', type=int, default=120,
                         help='ASCII render width (default: 120)')
     parser.add_argument('--height', type=int, default=60,
@@ -172,6 +268,11 @@ def main():
 
     if args.render:
         render_map_ascii(data, args.width, args.height)
+        return 0
+
+    if args.png:
+        w, h = render_map_png(data, args.png, args.png_width)
+        print(f"Wrote heatmap PNG {args.png}: {w} x {h}")
         return 0
 
     # Default: brief summary

@@ -27,6 +27,7 @@ Usage:
 import struct
 import sys
 import argparse
+import json
 import os
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -322,6 +323,88 @@ def show_stats(data, offsets):
 
 
 # =============================================================================
+# JSON EXPORT
+# =============================================================================
+
+def to_json_obj(data: bytes, offsets: list, file: str, annotate: bool = True) -> dict:
+    """
+    Build a stable JSON-serializable dict describing all CONDIT entries.
+
+    Mirrors the analysis done by show_all/show_chains/show_stats:
+      - one record per offset-table entry (decompiled expression + raw hex)
+      - chains: entries grouped by shared execution endpoint (end_pos)
+      - stats: aggregate size/empty counts
+    """
+    entries = []
+    sizes = []
+    non_empty = 0
+    # group entries by execution endpoint to derive chains (same as show_chains)
+    groups: dict = {}
+
+    for i in range(len(offsets)):
+        off = offsets[i]
+        table_end = offsets[i + 1] if i + 1 < len(offsets) else len(data)
+        chunk = data[off:table_end]
+        empty = all(b == 0 for b in chunk)
+
+        if empty:
+            expr = ""
+            end_pos = off
+        else:
+            expr, end_pos = decompile_entry(data, off, annotate)
+            non_empty += 1
+            sizes.append(end_pos - off)
+            groups.setdefault(end_pos, []).append(i)
+
+        raw_len = min(end_pos - off, 256)
+        raw_hex = ' '.join(f"{data[off + j]:02X}" for j in range(raw_len))
+
+        entries.append({
+            'index': i,
+            'offset': off,
+            'size_table': table_end - off,
+            'size_exec': end_pos - off,
+            'overflow': end_pos > table_end,
+            'empty': empty,
+            'expr': expr,
+            'raw_hex': raw_hex,
+        })
+
+    chains = []
+    for chain_idx, end_pos in enumerate(sorted(groups.keys())):
+        members = groups[end_pos]
+        first_off = offsets[members[0]]
+        chains.append({
+            'index': chain_idx,
+            'start': first_off,
+            'end': end_pos,
+            'size': end_pos - first_off,
+            'count': len(members),
+            'first': members[0],
+            'last': members[-1],
+        })
+
+    stats = {
+        'total_entries': len(offsets),
+        'non_empty': non_empty,
+        'empty': len(offsets) - non_empty,
+        'bytecode_start': offsets[0] if offsets else None,
+        'data_size': len(data),
+        'size_min': min(sizes) if sizes else None,
+        'size_max': max(sizes) if sizes else None,
+        'size_avg': (sum(sizes) / len(sizes)) if sizes else None,
+    }
+
+    return {
+        'file': file,
+        'entry_count': len(offsets),
+        'entries': entries,
+        'chains': chains,
+        'stats': stats,
+    }
+
+
+# =============================================================================
 # MAIN
 # =============================================================================
 
@@ -336,12 +419,27 @@ def main():
     p.add_argument('--groups', action='store_true', help='Show chain summary (compact)')
     p.add_argument('--stats', action='store_true', help='Show statistics')
     p.add_argument('--no-annotate', action='store_true', help='Disable GameStage annotations')
+    p.add_argument('--json', nargs='?', const='-', default=None, metavar='FILE',
+                   help='Write JSON to FILE (or stdout if no path given)')
     args = p.parse_args()
+
+    annotate = not args.no_annotate
+
+    if args.json is not None:
+        # JSON mode: pure JSON on stdout (suppress the "Loaded:" banner)
+        data, count, offsets = load_condit(args.file, args.raw)
+        obj = to_json_obj(data, offsets, args.file, annotate)
+        if args.json == '-':
+            json.dump(obj, sys.stdout, indent=2)
+            sys.stdout.write('\n')
+        else:
+            with open(args.json, 'w') as fh:
+                json.dump(obj, fh, indent=2)
+            print(f"Wrote JSON: {args.json}")
+        return
 
     data, count, offsets = load_condit(args.file, args.raw)
     print(f"  Loaded: {len(data):,} bytes, {count} entries\n")
-
-    annotate = not args.no_annotate
 
     if args.entry is not None:
         show_entry(data, offsets, args.entry, annotate)

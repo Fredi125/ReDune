@@ -26,6 +26,8 @@ Usage:
 import struct
 import sys
 import argparse
+import io
+import json
 import os
 
 # Add parent dir to path for lib imports
@@ -365,6 +367,32 @@ def show_sietches(sav, detail_idx=None):
 
 
 # =============================================================================
+# JSON EXPORT
+# =============================================================================
+
+def to_json_obj(sav: "DuneSave") -> dict:
+    """Build a stable JSON-serializable dict of globals, troops, and sietches.
+
+    The troop()/sietch() dicts already contain only JSON-safe ints/bools/strs.
+    """
+    gs = sav.game_stage
+    return {
+        'globals': {
+            'stage': gs,
+            'stage_name': GAME_STAGES.get(gs, "Unknown"),
+            'day': sav.day,
+            'hour': sav.hour,
+            'charisma': sav.charisma,
+            'rallied': sav.rallied_troops,
+            'spice': sav.spice,
+            'contact': sav.contact_distance,
+        },
+        'troops': [sav.troop(i) for i in range(TROOP_COUNT)],
+        'sietches': [sav.sietch(i) for i in range(SIETCH_COUNT)],
+    }
+
+
+# =============================================================================
 # MAIN
 # =============================================================================
 
@@ -404,7 +432,32 @@ Examples:
                    help='Output file (default: overwrite input)')
     p.add_argument('--hex', type=lambda x: int(x, 0), default=None, metavar='OFFSET',
                    help='Hex dump 64 bytes at offset')
+    p.add_argument('--json', nargs='?', const='-', default=None, metavar='FILE',
+                   help='Write JSON (globals/troops/sietches) to FILE (or stdout)')
     args = p.parse_args()
+
+    # JSON mode: read-only export. When writing to stdout, suppress the
+    # "Loaded:" banner that DuneSave.__init__ prints so stdout is pure JSON.
+    if args.json is not None:
+        to_stdout = (args.json == '-')
+        if to_stdout:
+            real_stdout = sys.stdout
+            sys.stdout = io.StringIO()
+            try:
+                sav = DuneSave(args.file)
+            finally:
+                sys.stdout = real_stdout
+        else:
+            sav = DuneSave(args.file)
+        obj = to_json_obj(sav)
+        if to_stdout:
+            json.dump(obj, sys.stdout, indent=2)
+            sys.stdout.write('\n')
+        else:
+            with open(args.json, 'w') as fh:
+                json.dump(obj, fh, indent=2)
+            print(f"Wrote JSON: {args.json}")
+        return
 
     sav = DuneSave(args.file)
     modified = False

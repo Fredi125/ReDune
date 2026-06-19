@@ -39,6 +39,7 @@ Usage:
 import struct
 import sys
 import argparse
+import json
 import os
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -341,6 +342,45 @@ def show_stats(data: bytes, offsets: list):
 
 
 # =============================================================================
+# JSON EXPORT
+# =============================================================================
+
+def to_json_obj(data: bytes, offsets: list, file: str) -> dict:
+    """
+    Build a stable JSON-serializable dict of all decoded DIALOGUE records.
+
+    "records" is a FLAT list across all non-empty entries; each element
+    carries its source entry/record index plus every decoded field.
+    Empty entries (FF FF terminator) are skipped, matching the display modes.
+    """
+    records = []
+    for entry_idx in range(len(offsets)):
+        recs = parse_entry(data, offsets[entry_idx])
+        if not recs:
+            continue
+        for rec_idx, rec in enumerate(recs):
+            records.append({
+                'entry': entry_idx,
+                'record': rec_idx,
+                'spoken': rec['spoken'],
+                'repeatable': rec['repeatable'],
+                'action_code': rec['action_code'],
+                'npc_id': rec['npc_id'],
+                'cond_type': rec['cond_type'],
+                'condit_idx': rec['condit_idx'],
+                'menu_flag': rec['menu_flag'],
+                'phrase_idx': rec['phrase_idx'],
+                'cond_flags': rec['cond_flags'],
+                'raw': list(rec['raw']),
+            })
+    return {
+        'file': file,
+        'entry_count': len(offsets),
+        'records': records,
+    }
+
+
+# =============================================================================
 # MAIN
 # =============================================================================
 
@@ -357,7 +397,22 @@ def main():
                    help='Show full decompilation of all entries')
     p.add_argument('--stats', action='store_true',
                    help='Show statistics')
+    p.add_argument('--json', nargs='?', const='-', default=None, metavar='FILE',
+                   help='Write JSON to FILE (or stdout if no path given)')
     args = p.parse_args()
+
+    if args.json is not None:
+        # JSON mode: pure JSON on stdout (suppress the "Loaded:" banner)
+        data, count, offsets = load_dialogue(args.file, args.raw)
+        obj = to_json_obj(data, offsets, args.file)
+        if args.json == '-':
+            json.dump(obj, sys.stdout, indent=2)
+            sys.stdout.write('\n')
+        else:
+            with open(args.json, 'w') as fh:
+                json.dump(obj, fh, indent=2)
+            print(f"Wrote JSON: {args.json}")
+        return
 
     data, count, offsets = load_dialogue(args.file, args.raw)
     print(f"  Loaded: {len(data):,} bytes, {count} entries\n")
