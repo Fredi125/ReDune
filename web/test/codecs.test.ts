@@ -15,6 +15,7 @@ import { loadCondit, conditEntries, compileExpr, bytesToHex } from "../src/codec
 import { DuneSave } from "../src/codecs/save";
 import { loadSpriteFile, decodeSprite, looksLikeSprite } from "../src/codecs/sprite";
 import { loadSal, encodeSal } from "../src/codecs/sal";
+import { loadTextTable, encodeTextTable, exportTextHsq, bytesToEditable, editableToBytes } from "../src/codecs/text";
 import { hsqDecompress as hsqDec } from "../src/codecs/compression";
 
 const here = dirname(fileURLToPath(import.meta.url));
@@ -279,6 +280,31 @@ for (const f of ["SIET.SAL", "PALACE.SAL", "VILG.SAL", "HARK.SAL"]) {
   const sal = loadSal(orig);
   const re = encodeSal(sal.sections);
   ok(`SAL ${f} byte-identical round-trip`, eq(orig, re), `${sal.sectionCount} sections, ${orig.length}B`);
+}
+
+// ---------------------------------------------------------------------------
+// String tables (PHRASE / COMMAND): lossless edit form + round-trip
+// ---------------------------------------------------------------------------
+console.log("\nString tables (PHRASE / COMMAND):");
+for (const f of ["PHRASE11.HSQ", "COMMAND1.HSQ"]) {
+  const path = join(GD, f);
+  if (!existsSync(path)) {
+    skip(`text ${f}`, "file missing");
+    continue;
+  }
+  const raw = read(path);
+  const decompressed = hsqDec(raw);
+  const tbl = loadTextTable(raw);
+
+  // editable text form is lossless per entry
+  const lossless = tbl.entries.every((e) => eq(editableToBytes(bytesToEditable(e.raw)), e.raw));
+  ok(`${f} editable form is lossless`, lossless, `${tbl.count} strings`);
+
+  // rebuild decompressed bytes from unedited entries -> byte-identical
+  ok(`${f} table rebuild byte-identical`, eq(encodeTextTable(tbl.entries), decompressed));
+
+  // full pipeline: edit-export -> decompress -> identical to original
+  ok(`${f} export+decompress round-trip`, eq(hsqDec(exportTextHsq(tbl.entries)), decompressed));
 }
 
 // ---------------------------------------------------------------------------

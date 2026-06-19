@@ -3,13 +3,15 @@ import { SpriteViewer } from "./ui/SpriteViewer";
 import { SaveEditor } from "./ui/SaveEditor";
 import { ConditStudio } from "./ui/ConditStudio";
 import { RoomStudio } from "./ui/RoomStudio";
+import { TextStudio } from "./ui/TextStudio";
 import { ErrorBoundary, Panel } from "./ui/shared";
 
-type Tab = "sprites" | "rooms" | "save" | "condit" | "about";
+type Tab = "sprites" | "rooms" | "text" | "save" | "condit" | "about";
 
 const TABS: { id: Tab; label: string }[] = [
   { id: "sprites", label: "◳ Sprites" },
   { id: "rooms", label: "▦ Rooms" },
+  { id: "text", label: "✎ Text" },
   { id: "save", label: "⚔ Save editor" },
   { id: "condit", label: "⎔ CONDIT studio" },
   { id: "about", label: "ⓘ About" },
@@ -32,6 +34,10 @@ function About() {
           <li>
             <b>Rooms</b> — decode <code>*.SAL</code> room layouts, render them to canvas with their decoration
             sprites, edit/add/move sprite placements, and re-export a byte-perfect <code>.SAL</code>.
+          </li>
+          <li>
+            <b>Text</b> — view/edit <code>PHRASE*.HSQ</code> dialogue and <code>COMMAND*.HSQ</code> UI strings
+            (translations/mods) and re-export a working <code>.HSQ</code>.
           </li>
           <li>
             <b>Save editor</b> — load <code>DUNE*.SAV</code>, edit globals / troops / sietches, export a working save.
@@ -69,6 +75,7 @@ export function App() {
       <ErrorBoundary key={tab}>
         {tab === "sprites" && <SpriteViewer />}
         {tab === "rooms" && <RoomStudio />}
+        {tab === "text" && <TextStudio />}
         {tab === "save" && <SaveEditor />}
         {tab === "condit" && <ConditStudio />}
         {tab === "about" && <About />}
