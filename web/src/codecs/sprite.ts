@@ -26,6 +26,9 @@ export interface SpriteFile {
   data: Uint8Array; // decompressed
   palEnd: number;
   hasPalette: boolean;
+  hasExtra: boolean;
+  /** raw palette-chunk region [2, palEnd) incl. the 0xFFFF terminator (for re-encoding) */
+  paletteBytes: Uint8Array;
   palette: Map<number, RGB>;
   count: number;
 }
@@ -73,7 +76,15 @@ export function loadSpriteFile(raw: Uint8Array, isRaw = false): SpriteFile {
   const hasPalette = palEnd > 2;
   const palette = hasPalette ? decodePalette(data, palEnd) : new Map<number, RGB>();
   const count = countSprites(data);
-  return { data, palEnd, hasPalette, palette, count };
+  return {
+    data,
+    palEnd,
+    hasPalette,
+    hasExtra: palEnd === 2,
+    paletteBytes: data.slice(2, palEnd),
+    palette,
+    count,
+  };
 }
 
 /**
@@ -203,6 +214,95 @@ export function decodeSprite(data: Uint8Array, spriteIdx: number): Sprite {
   }
 
   return { width, height, paletteOffset: palOffset, compressed: compression, pixels };
+}
+
+export interface EncSprite {
+  width: number;
+  height: number;
+  paletteOffset: number;
+  pixels: Uint8Array; // palette indices, width*height
+}
+
+/**
+ * Encode a sprite file (raw / uncompressed mode). The output decodes back to
+ * the exact same sprites & palette (decode-equivalent round-trip), so it is a
+ * valid replacement file the game/decoder reads. `paletteBytes` is the raw
+ * [2,palEnd) region (reuse loadSpriteFile().paletteBytes to preserve the palette).
+ */
+export function encodeSpriteFile(opts: { paletteBytes: Uint8Array; hasExtra: boolean; sprites: EncSprite[] }): Uint8Array {
+  const { paletteBytes, hasExtra, sprites } = opts;
+  const palEnd = 2 + paletteBytes.length;
+
+  const bodies: number[][] = sprites.map((s) => {
+    const body: number[] = [s.width & 0xff, (s.width >> 8) & 0x7f, s.height & 0xff, s.paletteOffset & 0xff];
+    if (hasExtra) body.push(0, 0);
+    const nib = (px: number) => (px - s.paletteOffset) & 0x0f;
+    for (let row = 0; row < s.height; row++) {
+      for (let col = 0; col < s.width; col += 4) {
+        const at = (c: number) => (c < s.width ? s.pixels[row * s.width + c] : s.paletteOffset);
+        const p0 = nib(at(col));
+        const p1 = nib(at(col + 1));
+        const p2 = nib(at(col + 2));
+        const p3 = nib(at(col + 3));
+        body.push(p0 | (p1 << 4), p2 | (p3 << 4));
+      }
+    }
+    return body;
+  });
+
+  const n = sprites.length;
+  const tableSize = n * 2;
+  const offsets: number[] = [];
+  let pos = tableSize;
+  for (const b of bodies) {
+    offsets.push(pos);
+    pos += b.length;
+  }
+
+  const out: number[] = [palEnd & 0xff, (palEnd >> 8) & 0xff];
+  for (const x of paletteBytes) out.push(x);
+  for (const off of offsets) out.push(off & 0xff, (off >> 8) & 0xff);
+  for (const b of bodies) for (const x of b) out.push(x);
+  return Uint8Array.from(out);
+}
+
+/**
+ * Map an RGBA image to a sprite's 16-colour window [palOffset, palOffset+15]
+ * by nearest-colour matching. Returns palette indices (width*height).
+ */
+export function quantizeToSprite(rgba: Uint8ClampedArray | Uint8Array, width: number, height: number, palette: Map<number, RGB>, palOffset: number): Uint8Array {
+  const cand: { idx: number; rgb: RGB }[] = [];
+  for (let i = 0; i < 16; i++) {
+    const rgb = palette.get(palOffset + i);
+    if (rgb) cand.push({ idx: palOffset + i, rgb });
+  }
+  const out = new Uint8Array(width * height);
+  if (cand.length === 0) return out;
+  for (let p = 0; p < width * height; p++) {
+    const o = p * 4;
+    const r = rgba[o];
+    const g = rgba[o + 1];
+    const b = rgba[o + 2];
+    const a = rgba[o + 3];
+    if (a < 128) {
+      out[p] = palOffset; // transparent -> base index (index 0 convention)
+      continue;
+    }
+    let best = cand[0];
+    let bd = Infinity;
+    for (const c of cand) {
+      const dr = r - c.rgb[0];
+      const dg = g - c.rgb[1];
+      const db = b - c.rgb[2];
+      const d = dr * dr + dg * dg + db * db;
+      if (d < bd) {
+        bd = d;
+        best = c;
+      }
+    }
+    out[p] = best.idx;
+  }
+  return out;
 }
 
 /**

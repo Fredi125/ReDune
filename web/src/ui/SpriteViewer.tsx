@@ -1,10 +1,52 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { decodeSprite, loadSpriteFile, spriteToRGBA, type RGB, type Sprite, type SpriteFile } from "../codecs/sprite";
-import { hex, LoadBar, Panel } from "./shared";
+import { hsqCompress } from "../codecs/compression";
+import {
+  decodeSprite,
+  encodeSpriteFile,
+  loadSpriteFile,
+  quantizeToSprite,
+  spriteToRGBA,
+  type EncSprite,
+  type RGB,
+  type Sprite,
+  type SpriteFile,
+} from "../codecs/sprite";
+import { downloadBytes, hex, LoadBar, Panel, Tag } from "./shared";
 
-function SpriteCell(props: { name: string; idx: number; sprite: Sprite; palette: Map<number, RGB>; scale: number; opaque: boolean }) {
+/** Draw an image file into a w×h RGBA buffer (scaled to fit). */
+function imageFileToRGBA(file: File, w: number, h: number): Promise<Uint8ClampedArray> {
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    img.onload = () => {
+      const c = document.createElement("canvas");
+      c.width = w;
+      c.height = h;
+      const ctx = c.getContext("2d");
+      if (!ctx) return reject(new Error("no ctx"));
+      ctx.imageSmoothingEnabled = false;
+      ctx.clearRect(0, 0, w, h);
+      ctx.drawImage(img, 0, 0, w, h);
+      resolve(ctx.getImageData(0, 0, w, h).data);
+      URL.revokeObjectURL(img.src);
+    };
+    img.onerror = reject;
+    img.src = URL.createObjectURL(file);
+  });
+}
+
+function SpriteCell(props: {
+  name: string;
+  idx: number;
+  sprite: Sprite;
+  palette: Map<number, RGB>;
+  scale: number;
+  opaque: boolean;
+  replaced: boolean;
+  onReplace: (idx: number, file: File) => void;
+}) {
   const { sprite, palette, scale, opaque } = props;
   const ref = useRef<HTMLCanvasElement>(null);
+  const fileRef = useRef<HTMLInputElement>(null);
   const { width: w, height: h } = sprite;
 
   useEffect(() => {
@@ -38,12 +80,16 @@ function SpriteCell(props: { name: string; idx: number; sprite: Sprite; palette:
         <canvas ref={ref} className="pixel" style={{ width: w * scale, height: h * scale, maxWidth: 320 }} />
       )}
       <div className="small muted">
-        #{props.idx} · {w}×{h} · pal {hex(sprite.paletteOffset)} · {sprite.compressed ? "RLE" : "raw"}
+        #{props.idx} · {w}×{h} · pal {hex(sprite.paletteOffset)}
+        {props.replaced && " "}
+        {props.replaced && <Tag color="var(--amber)">edited</Tag>}
       </div>
       {w > 0 && h > 0 && (
-        <button className="btn small" onClick={download}>
-          PNG
-        </button>
+        <div className="row small" style={{ gap: 4 }}>
+          <button className="btn small" onClick={download}>PNG</button>
+          <button className="btn small" onClick={() => fileRef.current?.click()}>replace…</button>
+          <input ref={fileRef} type="file" accept="image/*" style={{ display: "none" }} onChange={(e) => e.target.files?.[0] && props.onReplace(props.idx, e.target.files[0])} />
+        </div>
       )}
     </div>
   );
@@ -55,71 +101,100 @@ export function SpriteViewer() {
   const [error, setError] = useState("");
   const [scale, setScale] = useState(3);
   const [opaque, setOpaque] = useState(false);
+  const spritesRef = useRef<Sprite[]>([]);
+  const replacedRef = useRef<Set<number>>(new Set());
+  const [, setVer] = useState(0);
+  const bump = () => setVer((v) => v + 1);
 
   const load = (n: string, bytes: Uint8Array) => {
     setName(n.replace(/\.[^.]+$/, ""));
     setError("");
     try {
-      setFile(loadSpriteFile(bytes));
+      const sf = loadSpriteFile(bytes);
+      const arr: Sprite[] = [];
+      for (let i = 0; i < sf.count; i++) {
+        try {
+          arr.push(decodeSprite(sf.data, i));
+        } catch {
+          arr.push({ width: 0, height: 0, paletteOffset: 0, compressed: false, pixels: new Uint8Array(0) });
+        }
+      }
+      spritesRef.current = arr;
+      replacedRef.current = new Set();
+      setFile(sf);
     } catch (e) {
       setFile(null);
       setError(`Not a decodable sprite file: ${String(e)}`);
     }
   };
 
-  const sprites = useMemo(() => {
-    if (!file) return [];
-    const out: Sprite[] = [];
-    for (let i = 0; i < file.count; i++) {
-      try {
-        out.push(decodeSprite(file.data, i));
-      } catch {
-        out.push({ width: 0, height: 0, paletteOffset: 0, compressed: false, pixels: new Uint8Array(0) });
-      }
+  const onReplace = async (idx: number, f: File) => {
+    if (!file) return;
+    const spr = spritesRef.current[idx];
+    if (spr.width === 0 || spr.height === 0) return;
+    try {
+      const rgba = await imageFileToRGBA(f, spr.width, spr.height);
+      const pixels = quantizeToSprite(rgba, spr.width, spr.height, file.palette, spr.paletteOffset);
+      spritesRef.current[idx] = { ...spr, pixels };
+      replacedRef.current.add(idx);
+      bump();
+    } catch (e) {
+      alert("Could not load image: " + e);
     }
-    return out;
-  }, [file]);
+  };
+
+  const exportHsq = () => {
+    if (!file) return;
+    const sprites: EncSprite[] = spritesRef.current.map((s) => ({
+      width: s.width,
+      height: s.height,
+      paletteOffset: s.paletteOffset,
+      pixels: s.pixels,
+    }));
+    const decompressed = encodeSpriteFile({ paletteBytes: file.paletteBytes, hasExtra: file.hasExtra, sprites });
+    downloadBytes(`${name}.HSQ`, hsqCompress(decompressed));
+  };
 
   const paletteEntries = useMemo(() => (file ? [...file.palette.entries()].sort((a, b) => a[0] - b[0]) : []), [file]);
+  const editedCount = replacedRef.current.size;
 
   return (
     <div className="col">
-      <LoadBar
-        accept=".HSQ,.hsq"
-        sampleName="CHAN.HSQ"
-        hint="Load a sprite HSQ (e.g. CHAN.HSQ, PERS.HSQ, MAP2.HSQ, BACK.HSQ)."
-        onLoad={load}
-      />
+      <LoadBar accept=".HSQ,.hsq" sampleName="CHAN.HSQ" hint="Load a sprite HSQ (e.g. CHAN, PERS, BARO, MAP2). Replace frames with PNGs and re-export." onLoad={load} />
       {error && <div className="warn small">{error}</div>}
 
       {file && (
-        <>
-          <Panel
-            title={`${name} — ${file.count} sprites, ${file.palette.size} palette colors`}
-            right={
-              <div className="row small">
-                <label className="muted">scale</label>
-                <input type="range" min={1} max={8} value={scale} onChange={(e) => setScale(+e.target.value)} />
-                <label className="muted">
-                  <input type="checkbox" checked={opaque} onChange={(e) => setOpaque(e.target.checked)} /> opaque
-                </label>
-              </div>
-            }
-          >
-            {paletteEntries.length > 0 && (
-              <div className="row" style={{ gap: 2, marginBottom: 10 }}>
-                {paletteEntries.map(([idx, [r, g, b]]) => (
-                  <span key={idx} className="swatch" title={`${idx}: ${r},${g},${b}`} style={{ background: `rgb(${r},${g},${b})` }} />
-                ))}
-              </div>
-            )}
-            <div className="row" style={{ alignItems: "flex-start" }}>
-              {sprites.map((s, i) => (
-                <SpriteCell key={i} name={name} idx={i} sprite={s} palette={file.palette} scale={scale} opaque={opaque} />
+        <Panel
+          title={`${name} — ${file.count} sprites, ${file.palette.size} palette colors`}
+          right={
+            <div className="row small">
+              <label className="muted">scale</label>
+              <input type="range" min={1} max={8} value={scale} onChange={(e) => setScale(+e.target.value)} />
+              <label className="muted">
+                <input type="checkbox" checked={opaque} onChange={(e) => setOpaque(e.target.checked)} /> opaque
+              </label>
+              {editedCount > 0 && <Tag color="var(--amber)">{editedCount} edited</Tag>}
+              <button className="btn primary" onClick={exportHsq}>⤓ Export .HSQ</button>
+            </div>
+          }
+        >
+          {paletteEntries.length > 0 && (
+            <div className="row" style={{ gap: 2, marginBottom: 10 }}>
+              {paletteEntries.map(([idx, [r, g, b]]) => (
+                <span key={idx} className="swatch" title={`${idx}: ${r},${g},${b}`} style={{ background: `rgb(${r},${g},${b})` }} />
               ))}
             </div>
-          </Panel>
-        </>
+          )}
+          <div className="small muted" style={{ marginBottom: 8 }}>
+            Graphics mod loop: <b>replace…</b> a frame with a PNG (auto-mapped to that sprite's 16-colour window), then{" "}
+            <b>Export .HSQ</b> and put it back via the <b>Archive</b> tab.
+          </div>
+          <div className="row" style={{ alignItems: "flex-start" }}>
+            {spritesRef.current.map((s, i) => (
+              <SpriteCell key={i} name={name} idx={i} sprite={s} palette={file.palette} scale={scale} opaque={opaque} replaced={replacedRef.current.has(i)} onReplace={onReplace} />
+            ))}
+          </div>
+        </Panel>
       )}
     </div>
   );

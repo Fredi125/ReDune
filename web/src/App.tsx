@@ -43,7 +43,8 @@ function About() {
         </p>
         <ul className="small">
           <li>
-            <b>Sprites</b> — decode any sprite <code>*.HSQ</code> (palette + RLE/raw bipixels) to canvas; export PNG.
+            <b>Sprites</b> — decode any sprite <code>*.HSQ</code> to canvas, export PNG, <b>replace frames with PNGs</b>
+            and re-export a working <code>.HSQ</code> (graphics mods).
           </li>
           <li>
             <b>Rooms</b> — decode <code>*.SAL</code> room layouts, render them to canvas with their decoration

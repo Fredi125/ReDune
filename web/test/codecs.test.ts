@@ -13,7 +13,7 @@ import { dirname, resolve, join } from "node:path";
 import { hsqDecompress, hsqCompress, f7Decompress, f7Compress } from "../src/codecs/compression";
 import { loadCondit, conditEntries, compileExpr, bytesToHex } from "../src/codecs/condit";
 import { DuneSave } from "../src/codecs/save";
-import { loadSpriteFile, decodeSprite, looksLikeSprite } from "../src/codecs/sprite";
+import { loadSpriteFile, decodeSprite, looksLikeSprite, encodeSpriteFile } from "../src/codecs/sprite";
 import { loadSal, encodeSal } from "../src/codecs/sal";
 import { loadTextTable, encodeTextTable, exportTextHsq, bytesToEditable, editableToBytes } from "../src/codecs/text";
 import { loadDialogue } from "../src/codecs/dialogue";
@@ -570,6 +570,32 @@ for (const f of ["ARRAKIS.HSQ", "ARRAKIS.AGD", "ARRAKIS.M32"]) {
       skip(`HERAD ${f} vs Python`, String(e));
     }
   } else skip(`HERAD ${f} vs Python`, "python3 unavailable");
+}
+
+// ---------------------------------------------------------------------------
+// Sprite encoder: re-encode (raw) must decode back to identical sprites
+// ---------------------------------------------------------------------------
+console.log("\nSprite encoder (round-trip):");
+{
+  const path = ["CHAN.HSQ", "BARO.HSQ", "PERS.HSQ"].map((f) => join(GD, f)).find((p) => existsSync(p));
+  if (!path) skip("sprite encode", "no sprite HSQ present");
+  else {
+    const sf = loadSpriteFile(read(path));
+    const sprites = [];
+    for (let i = 0; i < sf.count; i++) {
+      const s = decodeSprite(sf.data, i);
+      sprites.push({ width: s.width, height: s.height, paletteOffset: s.paletteOffset, pixels: s.pixels });
+    }
+    const encoded = encodeSpriteFile({ paletteBytes: sf.paletteBytes, hasExtra: sf.hasExtra, sprites });
+    const sf2 = loadSpriteFile(encoded, true);
+    let okAll = sf2.count === sf.count && sf2.palette.size === sf.palette.size;
+    for (let i = 0; i < sf.count && okAll; i++) {
+      const a = decodeSprite(sf.data, i);
+      const b = decodeSprite(sf2.data, i);
+      if (a.width !== b.width || a.height !== b.height || a.paletteOffset !== b.paletteOffset || !eq(a.pixels, b.pixels)) okAll = false;
+    }
+    ok("sprite re-encode decodes identically", okAll, `${sf.count} sprites`);
+  }
 }
 
 // ---------------------------------------------------------------------------
