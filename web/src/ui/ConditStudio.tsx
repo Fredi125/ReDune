@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { hsqCompress } from "../codecs/compression";
 import { bytesToHex, compileExpr, conditEntries, loadCondit, type ConditEntry, type ConditFile } from "../codecs/condit";
+import { countSprites, looksLikeSprite } from "../codecs/sprite";
 import { downloadBytes, hex, LoadBar, Panel, Tag } from "./shared";
 
 function compileSafe(expr: string): { bytes?: Uint8Array; error?: string } {
@@ -37,6 +38,19 @@ export function ConditStudio() {
   };
 
   const entries = useMemo<ConditEntry[]>(() => (cf ? conditEntries(cf, true).filter((e) => !e.empty) : []), [cf]);
+
+  // Detect when the loaded file isn't actually CONDIT bytecode (e.g. a sprite
+  // sheet) so we can warn instead of showing meaningless "expressions".
+  const mismatch = useMemo(() => {
+    if (!cf) return null;
+    if (looksLikeSprite(cf.data)) {
+      return { kind: "sprite" as const, sprites: countSprites(cf.data) };
+    }
+    // Real CONDIT entries are small; runaway sizes mean we're misreading data.
+    const huge = entries.length > 0 && entries.filter((e) => e.sizeExec > 256).length / entries.length > 0.3;
+    if (huge) return { kind: "notcondit" as const };
+    return null;
+  }, [cf, entries]);
 
   const rate = useMemo(() => {
     if (!cf) return null;
@@ -104,6 +118,31 @@ export function ConditStudio() {
           Operands: <code>byte[Name|0xNN]</code>, <code>word[…]</code>, <code>0xNN</code>. Ops: == != &lt; &gt; &lt;= &gt;= + - &amp; | (named vars like GameStage resolve automatically).
         </div>
       </Panel>
+
+      {cf && mismatch && (
+        <div className="panel" style={{ borderColor: "var(--red)" }}>
+          <div className="panel-b small">
+            {mismatch.kind === "sprite" ? (
+              <>
+                <span className="warn">
+                  <b>This isn't CONDIT.HSQ.</b>
+                </span>{" "}
+                It parses as a <b>sprite sheet ({mismatch.sprites} sprites)</b>, so the entries below are meaningless —
+                the CONDIT decoder will read any HSQ as bytecode. Open <b>{name}</b> in the <b>Sprites</b> tab to view it,
+                and load the real <code>CONDIT.HSQ</code> here for actual event conditions.
+              </>
+            ) : (
+              <>
+                <span className="warn">
+                  <b>This doesn't look like CONDIT bytecode.</b>
+                </span>{" "}
+                Entry sizes are implausibly large, so the decompiled output is unreliable. Make sure you loaded{" "}
+                <code>CONDIT.HSQ</code>.
+              </>
+            )}
+          </div>
+        </div>
+      )}
 
       {cf && (
         <div className="row" style={{ alignItems: "flex-start" }}>

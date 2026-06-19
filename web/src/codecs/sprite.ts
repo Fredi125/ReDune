@@ -76,7 +76,53 @@ export function loadSpriteFile(raw: Uint8Array, isRaw = false): SpriteFile {
   return { data, palEnd, hasPalette, palette, count };
 }
 
-/** Decode a single sprite by index from a parsed sprite file. */
+/**
+ * Heuristic: does this decompressed buffer look like a sprite sheet?
+ * Used to warn when a non-CONDIT file is loaded into the CONDIT studio.
+ * A real sprite file has a palette terminated by 0xFFFF, then an offset
+ * table of sprites with plausible dimensions.
+ */
+export function looksLikeSprite(data: Uint8Array): boolean {
+  try {
+    if (data.length < 8) return false;
+    const palEnd = u16(data, 0);
+    if (palEnd < 2 || palEnd > data.length) return false;
+
+    // Palette chunks (when present) must terminate with 0xFFFF inside [2, palEnd).
+    if (palEnd > 2) {
+      let pos = 2;
+      let term = false;
+      while (pos + 1 < palEnd) {
+        if (data[pos] === 0xff && data[pos + 1] === 0xff) {
+          term = true;
+          break;
+        }
+        pos += 2 + data[pos + 1] * 3;
+      }
+      if (!term) return false;
+    }
+
+    const count = u16(data, palEnd) >> 1;
+    if (count < 1 || count > 4096) return false;
+
+    // First few sprite headers should have plausible dimensions.
+    let good = 0;
+    let checked = 0;
+    for (let i = 0; i < Math.min(count, 6); i++) {
+      const so = u16(data, palEnd + i * 2);
+      const base = palEnd + so;
+      if (base + 4 > data.length) continue;
+      const w = data[base] + ((data[base + 1] & 0x7f) << 8);
+      const h = data[base + 2];
+      checked++;
+      if (w >= 1 && w <= 640 && h >= 1 && h <= 400) good++;
+    }
+    return checked > 0 && good >= Math.ceil(checked * 0.8);
+  } catch {
+    return false;
+  }
+}
+
 export function decodeSprite(data: Uint8Array, spriteIdx: number): Sprite {
   const palEnd = u16(data, 0);
   const offsetTableBase = palEnd;

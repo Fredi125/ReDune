@@ -13,7 +13,8 @@ import { dirname, resolve, join } from "node:path";
 import { hsqDecompress, hsqCompress, f7Decompress, f7Compress } from "../src/codecs/compression";
 import { loadCondit, conditEntries, compileExpr, bytesToHex } from "../src/codecs/condit";
 import { DuneSave } from "../src/codecs/save";
-import { loadSpriteFile, decodeSprite } from "../src/codecs/sprite";
+import { loadSpriteFile, decodeSprite, looksLikeSprite } from "../src/codecs/sprite";
+import { hsqDecompress as hsqDec } from "../src/codecs/compression";
 
 const here = dirname(fileURLToPath(import.meta.url));
 const ROOT = resolve(here, "..", "..");
@@ -261,6 +262,20 @@ console.log("\nSprite decoding:");
       skip("sprite vs Python", "python3 unavailable");
     }
   }
+}
+
+// ---------------------------------------------------------------------------
+// File-type detection (sprite vs CONDIT) — prevents the CONDIT studio from
+// silently decoding a sprite sheet (e.g. BARO.HSQ) as bytecode.
+// ---------------------------------------------------------------------------
+console.log("\nFile-type detection:");
+{
+  const baro = join(GD, "BARO.HSQ");
+  const condit = join(GD, "CONDIT.HSQ");
+  if (existsSync(baro)) ok("BARO.HSQ detected as sprite", looksLikeSprite(hsqDec(read(baro))));
+  else skip("BARO sprite detect", "BARO.HSQ missing");
+  if (existsSync(condit)) ok("CONDIT.HSQ NOT detected as sprite", !looksLikeSprite(hsqDec(read(condit))));
+  else skip("CONDIT non-sprite detect", "CONDIT.HSQ missing");
 }
 
 // ---------------------------------------------------------------------------
