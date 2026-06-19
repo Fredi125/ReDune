@@ -16,6 +16,8 @@ import { DuneSave } from "../src/codecs/save";
 import { loadSpriteFile, decodeSprite, looksLikeSprite } from "../src/codecs/sprite";
 import { loadSal, encodeSal } from "../src/codecs/sal";
 import { loadTextTable, encodeTextTable, exportTextHsq, bytesToEditable, editableToBytes } from "../src/codecs/text";
+import { decodeVoc } from "../src/codecs/voc";
+import { heatmapColor, detectMapWidth } from "../src/codecs/map";
 import { hsqDecompress as hsqDec } from "../src/codecs/compression";
 
 const here = dirname(fileURLToPath(import.meta.url));
@@ -319,6 +321,66 @@ console.log("\nFile-type detection:");
   else skip("BARO sprite detect", "BARO.HSQ missing");
   if (existsSync(condit)) ok("CONDIT.HSQ NOT detected as sprite", !looksLikeSprite(hsqDec(read(condit))));
   else skip("CONDIT non-sprite detect", "CONDIT.HSQ missing");
+}
+
+// ---------------------------------------------------------------------------
+// VOC sound: sample rate + sample count must match the Python decoder
+// ---------------------------------------------------------------------------
+console.log("\nVOC sound:");
+{
+  const cand = ["SN1.HSQ", "SN2.HSQ", "SNA.HSQ", "SN5.VOC"].map((f) => join(GD, f)).find((p) => existsSync(p));
+  if (!cand) skip("VOC", "no SN* sound file present");
+  else {
+    const v = decodeVoc(read(cand));
+    ok("VOC decodes", v.samples.length > 0 && v.sampleRate > 0, `${v.sampleRate}Hz, ${v.samples.length} samples, ${v.duration.toFixed(2)}s`);
+    if (PY) {
+      try {
+        py(
+          `import json,sys;sys.path.insert(0,'.');sys.path.insert(0,'tools')\nfrom lib.compression import hsq_decompress\nfrom sound_decoder import parse_voc, VOC_MAGIC\nraw=open(${JSON.stringify(cand)},'rb').read()\nd=raw if raw[:20]==VOC_MAGIC else hsq_decompress(raw)\ni=parse_voc(bytes(d))\njson.dump({'sr':i['sample_rate'],'total':i['total_samples']},open('/tmp/redune_voc.json','w'))`,
+        );
+        const ref = JSON.parse(readFileSync("/tmp/redune_voc.json", "utf8"));
+        ok("VOC matches Python", v.sampleRate === ref.sr && v.samples.length === ref.total, `sr=${v.sampleRate} n=${v.samples.length}`);
+      } catch (e) {
+        skip("VOC vs Python", String(e));
+      }
+    } else skip("VOC vs Python", "python3 unavailable");
+  }
+}
+
+// ---------------------------------------------------------------------------
+// MAP heatmap: gradient + width detection match the Python renderer
+// ---------------------------------------------------------------------------
+console.log("\nMAP heatmap:");
+{
+  ok("map width detect (50681)", detectMapWidth(50681) === 320, `${detectMapWidth(50681)}`);
+  const anchors: [number, [number, number, number]][] = [
+    [0x00, [0, 0, 0]],
+    [0x3f, [0, 0, 255]],
+    [0x7f, [0, 255, 0]],
+    [0xbf, [255, 255, 0]],
+    [0xff, [255, 255, 255]],
+  ];
+  const good = anchors.every(([v, c]) => {
+    const r = heatmapColor(v);
+    return r[0] === c[0] && r[1] === c[1] && r[2] === c[2];
+  });
+  ok("map heatmap gradient anchors", good);
+  if (PY) {
+    try {
+      py(
+        `import json,sys;sys.path.insert(0,'tools')\nfrom map_decoder import map_heatmap_color\njson.dump([list(map_heatmap_color(v)) for v in range(256)],open('/tmp/redune_map.json','w'))`,
+      );
+      const ref: [number, number, number][] = JSON.parse(readFileSync("/tmp/redune_map.json", "utf8"));
+      let mism = 0;
+      for (let v = 0; v < 256; v++) {
+        const r = heatmapColor(v);
+        if (r[0] !== ref[v][0] || r[1] !== ref[v][1] || r[2] !== ref[v][2]) mism++;
+      }
+      ok("map heatmap matches Python (256 values)", mism === 0, `${mism} mismatch`);
+    } catch (e) {
+      skip("map vs Python", String(e));
+    }
+  } else skip("map vs Python", "python3 unavailable");
 }
 
 // ---------------------------------------------------------------------------

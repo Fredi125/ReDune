@@ -4,14 +4,18 @@ import { SaveEditor } from "./ui/SaveEditor";
 import { ConditStudio } from "./ui/ConditStudio";
 import { RoomStudio } from "./ui/RoomStudio";
 import { TextStudio } from "./ui/TextStudio";
+import { MapViewer } from "./ui/MapViewer";
+import { AudioStudio } from "./ui/AudioStudio";
 import { ErrorBoundary, Panel } from "./ui/shared";
 
-type Tab = "sprites" | "rooms" | "text" | "save" | "condit" | "about";
+type Tab = "sprites" | "rooms" | "map" | "text" | "audio" | "save" | "condit" | "about";
 
 const TABS: { id: Tab; label: string }[] = [
   { id: "sprites", label: "◳ Sprites" },
   { id: "rooms", label: "▦ Rooms" },
+  { id: "map", label: "🌍 Map" },
   { id: "text", label: "✎ Text" },
+  { id: "audio", label: "♪ Audio" },
   { id: "save", label: "⚔ Save editor" },
   { id: "condit", label: "⎔ CONDIT studio" },
   { id: "about", label: "ⓘ About" },
@@ -36,8 +40,14 @@ function About() {
             sprites, edit/add/move sprite placements, and re-export a byte-perfect <code>.SAL</code>.
           </li>
           <li>
+            <b>Map</b> — render <code>MAP.HSQ</code> world terrain as a heatmap (true globe projection still pending).
+          </li>
+          <li>
             <b>Text</b> — view/edit <code>PHRASE*.HSQ</code> dialogue and <code>COMMAND*.HSQ</code> UI strings
             (translations/mods) and re-export a working <code>.HSQ</code>.
+          </li>
+          <li>
+            <b>Audio</b> — decode and play sound effects (<code>SN*.HSQ/.VOC</code>) in-browser; export WAV.
           </li>
           <li>
             <b>Save editor</b> — load <code>DUNE*.SAV</code>, edit globals / troops / sietches, export a working save.
@@ -75,7 +85,9 @@ export function App() {
       <ErrorBoundary key={tab}>
         {tab === "sprites" && <SpriteViewer />}
         {tab === "rooms" && <RoomStudio />}
+        {tab === "map" && <MapViewer />}
         {tab === "text" && <TextStudio />}
+        {tab === "audio" && <AudioStudio />}
         {tab === "save" && <SaveEditor />}
         {tab === "condit" && <ConditStudio />}
         {tab === "about" && <About />}
