@@ -15,3 +15,5 @@ DUNE.DAT
 
 # Voice file subdirectories (CD audio data)
 gamedata/P*/
+DUNE_NEW.DAT
+REPACKED.DAT
