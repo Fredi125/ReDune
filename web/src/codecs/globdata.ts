@@ -43,3 +43,37 @@ export function loadGradientTables(raw: Uint8Array): GradTable[] {
   const data = isHsq(raw) ? hsqDecompress(raw) : raw;
   return parseGradientTables(data).tables.filter((t) => t.length > 0);
 }
+
+// Globe projection scanlines (Part 2): 64 latitude blocks × 200 bytes,
+// each = 98-byte longitude ramp (screen-x → longitude) + sep + terrain/shade bytes.
+const GLOBE_PREFIX = 422;
+const GLOBE_BLOCK = 200;
+const GLOBE_RAMP = 98;
+const GLOBE_COUNT = 64;
+
+export interface GlobeScanline {
+  index: number;
+  ramp: number[];
+  rampMax: number;
+  terrain: number[];
+}
+
+export function parseGlobe(data: Uint8Array): GlobeScanline[] {
+  const { end } = parseGradientTables(data);
+  const first = end + GLOBE_PREFIX;
+  const out: GlobeScanline[] = [];
+  for (let b = 0; b < GLOBE_COUNT; b++) {
+    const start = first + b * GLOBE_BLOCK;
+    if (start + GLOBE_BLOCK > data.length) break;
+    const ramp = Array.from(data.subarray(start, start + GLOBE_RAMP));
+    const terrain = Array.from(data.subarray(start + GLOBE_RAMP + 1, start + GLOBE_BLOCK));
+    while (terrain.length && terrain[terrain.length - 1] === 0) terrain.pop();
+    out.push({ index: b, ramp, rampMax: ramp.length ? Math.max(...ramp) : 0, terrain });
+  }
+  return out;
+}
+
+export function loadGlobe(raw: Uint8Array): GlobeScanline[] {
+  const data = isHsq(raw) ? hsqDecompress(raw) : raw;
+  return parseGlobe(data);
+}

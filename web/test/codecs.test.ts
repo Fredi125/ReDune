@@ -19,7 +19,7 @@ import { loadTextTable, encodeTextTable, exportTextHsq, bytesToEditable, editabl
 import { loadDialogue } from "../src/codecs/dialogue";
 import { decodeDnchar } from "../src/codecs/font";
 import { parseDat, extractFile, buildDat, rebuildDat } from "../src/codecs/dat";
-import { loadGradientTables } from "../src/codecs/globdata";
+import { loadGradientTables, loadGlobe } from "../src/codecs/globdata";
 import { HnmFile } from "../src/codecs/hnm";
 import { loadHerad } from "../src/codecs/herad";
 import { decodeVoc } from "../src/codecs/voc";
@@ -452,6 +452,20 @@ console.log("\nGLOBDATA gradient tables:");
   else {
     const tables = loadGradientTables(read(path));
     ok("gradient tables parse", tables.length === 55, `${tables.length} tables`);
+    const globe = loadGlobe(read(path));
+    ok("globe scanlines parse", globe.length === 64, `${globe.length} latitude blocks`);
+    if (PY) {
+      try {
+        py(
+          `import json,sys;sys.path.insert(0,'tools')\nfrom globdata_decoder import parse_gradient_tables, parse_globe_scanlines\nfrom compression import hsq_decompress\nraw=open(${JSON.stringify(path)},'rb').read()\nd=hsq_decompress(raw) if (sum(raw[:6])&0xFF)==0xAB else raw\n_,gs=parse_gradient_tables(d)\nsl=parse_globe_scanlines(d,gs)\njson.dump([[s['ramp_max'], s['ramp']] for s in sl],open('/tmp/redune_globe.json','w'))`,
+        );
+        const ref: [number, number[]][] = JSON.parse(readFileSync("/tmp/redune_globe.json", "utf8"));
+        const gok = ref.length === globe.length && globe.every((s, i) => s.rampMax === ref[i][0] && s.ramp.join(",") === ref[i][1].join(","));
+        ok("globe scanlines match Python", gok, `${ref.length} blocks`);
+      } catch (e) {
+        skip("globe vs Python", String(e));
+      }
+    }
     if (PY) {
       try {
         py(

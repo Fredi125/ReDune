@@ -51,7 +51,8 @@ function About() {
             sprites, edit/add/move sprite placements, and re-export a byte-perfect <code>.SAL</code>.
           </li>
           <li>
-            <b>Map</b> — render <code>MAP.HSQ</code> world terrain as a heatmap (true globe projection still pending).
+            <b>Map</b> — render <code>MAP.HSQ</code> world terrain as a heatmap, plus an experimental spinning{" "}
+            <b>globe</b> projected from the GLOBDATA latitude scanlines.
           </li>
           <li>
             <b>Text</b> — view/edit <code>PHRASE*.HSQ</code> dialogue and <code>COMMAND*.HSQ</code> UI strings
