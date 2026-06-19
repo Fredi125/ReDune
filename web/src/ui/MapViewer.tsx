@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { decodeMap, heatmapColor, MAP_WIDTHS, renderMapRGBA } from "../codecs/map";
 import { loadGlobe, type GlobeScanline } from "../codecs/globdata";
+import { parseTablat, tablatScaleCurve } from "../codecs/tablat";
 import { LoadBar, Panel } from "./shared";
 
 const GLOBE_R = 95;
@@ -12,6 +13,8 @@ export function MapViewer() {
   const [mapName, setMapName] = useState("");
   const [globe, setGlobe] = useState<GlobeScanline[] | null>(null);
   const [globeName, setGlobeName] = useState("");
+  const [scaleCurve, setScaleCurve] = useState<number[] | null>(null);
+  const [tablatName, setTablatName] = useState("");
   const [error, setError] = useState("");
   const [width, setWidth] = useState(0);
   const [scale, setScale] = useState(2);
@@ -36,6 +39,16 @@ export function MapViewer() {
       setGlobe(loadGlobe(bytes));
       setGlobeName(n);
       setMode("globe");
+    } catch (e) {
+      setError(String(e));
+    }
+  };
+  const loadTablat = (n: string, bytes: Uint8Array) => {
+    setError("");
+    try {
+      const curve = tablatScaleCurve(parseTablat(bytes));
+      setScaleCurve(curve.some((s) => s > 0) ? curve : null);
+      setTablatName(n);
     } catch (e) {
       setError(String(e));
     }
@@ -70,6 +83,7 @@ export function MapViewer() {
     const cy = GLOBE_SZ / 2;
     const R = GLOBE_R;
     const nLat = globe.length;
+    const maxScale = scaleCurve ? Math.max(...scaleCurve) : 0;
     for (let py = 0; py < GLOBE_SZ; py++) {
       const dy = py - cy;
       if (Math.abs(dy) > R) continue;
@@ -80,7 +94,12 @@ export function MapViewer() {
       const blk = globe[b];
       const tlen = blk.terrain.length;
       if (tlen === 0) continue;
-      const halfW = R * cosLat;
+      // Foreshortening width: from the real TABLAT scale curve if loaded, else geometric cos.
+      let halfW = R * cosLat;
+      if (scaleCurve && maxScale > 0) {
+        const li = Math.min(scaleCurve.length - 1, Math.max(0, Math.round(Math.abs(latNorm) * (scaleCurve.length - 1))));
+        halfW = (scaleCurve[li] / maxScale) * R;
+      }
       for (let px = 0; px < GLOBE_SZ; px++) {
         const dx = px - cx;
         if (Math.abs(dx) > halfW || halfW < 1) continue;
@@ -101,7 +120,7 @@ export function MapViewer() {
     const id = ctx.createImageData(GLOBE_SZ, GLOBE_SZ);
     id.data.set(out);
     ctx.putImageData(id, 0, 0);
-  }, [mode, globe, rot]);
+  }, [mode, globe, rot, scaleCurve]);
 
   // auto-spin
   useEffect(() => {
@@ -114,6 +133,7 @@ export function MapViewer() {
     <div className="col">
       <LoadBar accept=".HSQ,.hsq" sampleName="MAP.HSQ" hint="Load MAP.HSQ — the world terrain (flat heatmap view)." onLoad={loadMap} />
       <LoadBar accept=".HSQ,.hsq" sampleName="GLOBDATA.HSQ" hint={globe ? `${globeName} loaded ✓ — globe view available.` : "Optional: load GLOBDATA.HSQ for the spinning globe view."} onLoad={loadGlobeFile} />
+      <LoadBar accept=".BIN,.bin" sampleName="TABLAT.BIN" hint={scaleCurve ? `${tablatName} loaded ✓ — globe foreshortening from the real latitude table.` : "Optional: load TABLAT.BIN to drive the globe's latitude foreshortening from the game's table."} onLoad={loadTablat} />
       {error && <div className="warn small">Couldn't decode: {error}</div>}
 
       {(mapData || globe) && (
@@ -154,7 +174,7 @@ export function MapViewer() {
           <div className="small muted" style={{ marginTop: 8 }}>
             {mode === "flat"
               ? "Heatmap preview (low = blue/sand → high = red/white rock)."
-              : "Experimental globe: each latitude's terrain bytes from GLOBDATA, projected onto a sphere via the longitude ramps (validated parse; exact pixel projection from the ASM is still pending)."}
+              : `Globe: each latitude's terrain bytes from GLOBDATA on a sphere via the longitude ramps${scaleCurve ? ", foreshortened by the real TABLAT scale curve" : ""}. Data-driven (validated parse); the exact ASM pixel projection (palette/orientation) is still pending.`}
           </div>
         </Panel>
       )}

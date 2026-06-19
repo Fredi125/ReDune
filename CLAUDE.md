@@ -43,7 +43,7 @@ dune1992-re/
 ├── ui/                 ← Original single-file React save explorer (snapshot)
 │   └── save_explorer.jsx   ← React save file explorer
 ├── web/                ← Web Asset Studio (Vite + React + TypeScript)
-│   ├── src/codecs/         ← TS ports: compression, sprite, sal, text, voc, map, font, dialogue, condit, save, globdata, dat, hnm, herad (validated vs Python)
+│   ├── src/codecs/         ← TS ports: compression, sprite, sal, text, voc, map, font, dialogue, condit, save, globdata, dat, hnm, herad, tablat (validated vs Python)
 │   ├── src/ui/             ← Sprites, Rooms, Map, Font, Text, Audio, Music, Video, Story, SaveEditor, ConditStudio, Archive
 │   └── test/codecs.test.ts ← Byte-for-byte cross-check against lib/ using gamedata (53 checks)
 ├── docs/               ← Technical documentation
@@ -204,10 +204,11 @@ python3 tools/condit_decompiler.py samples/CONDIT.HSQ --chains
 
 - [x] In-browser HERAD playback → Music tab plays decoded note events via a WebAudio synth
 - [x] HERAD OPL2 instrument-patch format decoded (`parseInstruments`, 40-byte records; verified) + 2-op WebAudio FM synth driven by the real patches (`web/src/audio/heradFm.ts`)
+- [x] TABLAT.BIN globe latitude table decoded (`web/src/codecs/tablat.ts`, verified vs Python); its `scale` column = 199·cos(lat) confirms the sphere geometry and drives the globe foreshortening
 
-### Low Priority
+### Low Priority (blocked on disassembly we don't have)
 - [ ] Cycle-exact YM3812 (OPL2) emulator for bit-perfect HERAD timbre (current FM synth is a faithful 2-op approximation)
-- [ ] Exact (pixel-faithful) MAP globe projection from the ASM (sub_1BA75) — current globe is data-driven but not ASM-verified
+- [ ] Exact MAP globe palette/terrain-source/orientation from the ASM (sub_1BA75) — geometry is validated (TABLAT), but the exact pixel mapping isn't published
 
 ## External References
 

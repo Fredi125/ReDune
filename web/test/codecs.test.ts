@@ -20,6 +20,7 @@ import { loadDialogue } from "../src/codecs/dialogue";
 import { decodeDnchar } from "../src/codecs/font";
 import { parseDat, extractFile, buildDat, rebuildDat } from "../src/codecs/dat";
 import { loadGradientTables, loadGlobe } from "../src/codecs/globdata";
+import { parseTablat } from "../src/codecs/tablat";
 import { HnmFile } from "../src/codecs/hnm";
 import { loadHerad } from "../src/codecs/herad";
 import { decodeVoc } from "../src/codecs/voc";
@@ -481,6 +482,31 @@ console.log("\nGLOBDATA gradient tables:");
         skip("globdata vs Python", String(e));
       }
     } else skip("globdata vs Python", "python3 unavailable");
+  }
+}
+
+// ---------------------------------------------------------------------------
+// TABLAT globe latitude table — match the Python decoder
+// ---------------------------------------------------------------------------
+console.log("\nTABLAT latitude table:");
+{
+  const path = join(GD, "TABLAT.BIN");
+  if (!existsSync(path)) skip("tablat", "TABLAT.BIN missing");
+  else {
+    const recs = parseTablat(read(path));
+    ok("TABLAT parses 99 records", recs.length === 99);
+    if (PY) {
+      try {
+        py(
+          `import json,sys;sys.path.insert(0,'tools')\nfrom bin_decoder import decode_tablat\nr=decode_tablat(open(${JSON.stringify(path)},'rb').read())\njson.dump([[x['scale'],x['secondary'],x['lat_angle']] for x in r],open('/tmp/redune_tablat.json','w'))`,
+        );
+        const ref: number[][] = JSON.parse(readFileSync("/tmp/redune_tablat.json", "utf8"));
+        const tok = ref.length === recs.length && recs.every((r, i) => r.scale === ref[i][0] && r.secondary === ref[i][1] && r.latAngle === ref[i][2]);
+        ok("TABLAT matches Python", tok);
+      } catch (e) {
+        skip("TABLAT vs Python", String(e));
+      }
+    }
   }
 }
 
