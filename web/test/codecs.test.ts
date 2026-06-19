@@ -21,6 +21,7 @@ import { decodeDnchar } from "../src/codecs/font";
 import { parseDat, extractFile, buildDat, rebuildDat } from "../src/codecs/dat";
 import { loadGradientTables } from "../src/codecs/globdata";
 import { HnmFile } from "../src/codecs/hnm";
+import { loadHerad } from "../src/codecs/herad";
 import { decodeVoc } from "../src/codecs/voc";
 import { heatmapColor, detectMapWidth } from "../src/codecs/map";
 import { hsqDecompress as hsqDec } from "../src/codecs/compression";
@@ -543,6 +544,32 @@ console.log("\nHNM video:");
       }
     } else skip("HNM vs Python", "python3 unavailable");
   }
+}
+
+// ---------------------------------------------------------------------------
+// HERAD music: MIDI export must be byte-identical to the Python converter
+// (OPL2 / AGD / M32 variants)
+// ---------------------------------------------------------------------------
+console.log("\nHERAD music -> MIDI:");
+for (const f of ["ARRAKIS.HSQ", "ARRAKIS.AGD", "ARRAKIS.M32"]) {
+  const path = join(GD, f);
+  if (!existsSync(path)) {
+    skip(`HERAD ${f}`, "file missing");
+    continue;
+  }
+  const { info, midi } = loadHerad(read(path), f);
+  ok(`HERAD ${f} decodes`, midi.length > 0 && midi[0] === 0x4d, `${info.format}, ${info.tracks.length} tracks, ${midi.length}B MIDI`);
+  if (PY) {
+    try {
+      const ref = "/tmp/redune_herad.mid";
+      py(
+        `import sys;sys.path.insert(0,'tools')\nfrom herad_decoder import export_midi\nfrom compression import hsq_decompress\nraw=open(${JSON.stringify(path)},'rb').read()\nd=hsq_decompress(raw) if (len(raw)>=6 and (sum(raw[:6])&0xFF)==0xAB) else raw\nexport_midi(${JSON.stringify(path)}, bytes(d), ${JSON.stringify(ref)})`,
+      );
+      ok(`HERAD ${f} MIDI matches Python`, eq(midi, read(ref)));
+    } catch (e) {
+      skip(`HERAD ${f} vs Python`, String(e));
+    }
+  } else skip(`HERAD ${f} vs Python`, "python3 unavailable");
 }
 
 // ---------------------------------------------------------------------------

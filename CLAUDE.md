@@ -43,9 +43,9 @@ dune1992-re/
 ├── ui/                 ← Original single-file React save explorer (snapshot)
 │   └── save_explorer.jsx   ← React save file explorer
 ├── web/                ← Web Asset Studio (Vite + React + TypeScript)
-│   ├── src/codecs/         ← TS ports: compression, sprite, sal, text, voc, map, font, dialogue, condit, save, globdata, dat (validated vs Python)
-│   ├── src/ui/             ← Sprites, Rooms, Map, Font, Text, Audio, Story, SaveEditor, ConditStudio, Archive
-│   └── test/codecs.test.ts ← Byte-for-byte cross-check against lib/ using gamedata (45 checks)
+│   ├── src/codecs/         ← TS ports: compression, sprite, sal, text, voc, map, font, dialogue, condit, save, globdata, dat, hnm, herad (validated vs Python)
+│   ├── src/ui/             ← Sprites, Rooms, Map, Font, Text, Audio, Music, Video, Story, SaveEditor, ConditStudio, Archive
+│   └── test/codecs.test.ts ← Byte-for-byte cross-check against lib/ using gamedata (53 checks)
 ├── docs/               ← Technical documentation
 │   ├── save_format.md      ← Complete save file map
 │   ├── condit_vm.md        ← CONDIT VM architecture
@@ -188,12 +188,14 @@ python3 tools/condit_decompiler.py samples/CONDIT.HSQ --chains
 - [x] Web Font tab → DNCHAR.BIN bitmap-font viewer (glyph atlas + live proportional text preview)
 - [x] Web Archive tab → DUNE.DAT extract/replace/rebuild in-browser (byte-identical builder; closes the mod loop)
 - [x] SAL polygon gradient shading → GLOBDATA gradient tables (subtype&0x7F → table → room palette), filled rooms
+- [x] Web Video tab → HNM cutscene player (decode + canvas playback + soundtrack); frame checksums match Python
+- [x] Web Music tab → HERAD decoder + MIDI export (OPL2/AGD/M32; byte-identical MIDI vs Python)
 
 ## Pending Work
 
 ### Medium Priority
 - [ ] Improve CONDIT recompiler roundtrip beyond 63.7% (optimal operand-width encoding)
-- [ ] HNM video + HERAD music players in the web app
+- [ ] In-browser OPL2/MT-32 synthesis for true HERAD playback (currently MIDI export only)
 - [ ] True MAP globe projection (via TABLAT) instead of the row-major heatmap
 
 ### Low Priority

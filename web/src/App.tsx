@@ -10,9 +10,10 @@ import { StoryStudio } from "./ui/StoryStudio";
 import { FontViewer } from "./ui/FontViewer";
 import { DatStudio } from "./ui/DatStudio";
 import { HnmPlayer } from "./ui/HnmPlayer";
+import { HeradStudio } from "./ui/HeradStudio";
 import { ErrorBoundary, Panel } from "./ui/shared";
 
-type Tab = "sprites" | "rooms" | "map" | "font" | "text" | "audio" | "video" | "story" | "save" | "condit" | "archive" | "about";
+type Tab = "sprites" | "rooms" | "map" | "font" | "text" | "audio" | "music" | "video" | "story" | "save" | "condit" | "archive" | "about";
 
 const TABS: { id: Tab; label: string }[] = [
   { id: "sprites", label: "◳ Sprites" },
@@ -21,6 +22,7 @@ const TABS: { id: Tab; label: string }[] = [
   { id: "font", label: "Aa Font" },
   { id: "text", label: "✎ Text" },
   { id: "audio", label: "♪ Audio" },
+  { id: "music", label: "♫ Music" },
   { id: "video", label: "▶ Video" },
   { id: "story", label: "✦ Story" },
   { id: "save", label: "⚔ Save editor" },
@@ -56,6 +58,9 @@ function About() {
           </li>
           <li>
             <b>Audio</b> — decode and play sound effects (<code>SN*.HSQ/.VOC</code>) in-browser; export WAV.
+          </li>
+          <li>
+            <b>Music</b> — decode HERAD music (<code>*.HSQ/.AGD/.M32</code>) and export a Standard MIDI file.
           </li>
           <li>
             <b>Video</b> — decode and play <code>*.HNM</code> cutscenes on canvas (frame stepper + soundtrack); export WAV.
@@ -108,6 +113,7 @@ export function App() {
         {tab === "font" && <FontViewer />}
         {tab === "text" && <TextStudio />}
         {tab === "audio" && <AudioStudio />}
+        {tab === "music" && <HeradStudio />}
         {tab === "video" && <HnmPlayer />}
         {tab === "story" && <StoryStudio />}
         {tab === "save" && <SaveEditor />}

@@ -155,6 +155,8 @@ npm run build      # production bundle in web/dist/
 - **Text** — view/edit `PHRASE*.HSQ` dialogue and `COMMAND*.HSQ` UI strings (translations/mods),
   re-export a working `.HSQ`.
 - **Audio** — decode and play sound effects (`SN*.HSQ/.VOC`) in-browser; export WAV.
+- **Music** — decode HERAD music (`*.HSQ/.AGD/.M32`) and export a Standard MIDI file.
+- **Video** — decode and play `*.HNM` cutscenes on canvas (frame stepper + soundtrack); export WAV.
 - **Story** — cross-reference `DIALOGUE.HSQ` × `CONDIT.HSQ` × `PHRASE*.HSQ`: every dialogue option,
   the condition that gates it, and the line spoken.
 - **Save editor** — load `DUNE*.SAV`, edit globals / troops / sietches, export a working save.
