@@ -148,6 +148,7 @@ npm run build      # production bundle in web/dist/
 - **Rooms** — decode `*.SAL` room layouts, composite them with their decoration sprites on a
   canvas, edit/add/move sprite placements, and re-export a **byte-identical** `.SAL`.
 - **Map** — render `MAP.HSQ` world terrain as a heatmap.
+- **Font** — view the `DNCHAR.BIN` bitmap font (glyph atlas + live text preview).
 - **Text** — view/edit `PHRASE*.HSQ` dialogue and `COMMAND*.HSQ` UI strings (translations/mods),
   re-export a working `.HSQ`.
 - **Audio** — decode and play sound effects (`SN*.HSQ/.VOC`) in-browser; export WAV.

@@ -7,14 +7,16 @@ import { TextStudio } from "./ui/TextStudio";
 import { MapViewer } from "./ui/MapViewer";
 import { AudioStudio } from "./ui/AudioStudio";
 import { StoryStudio } from "./ui/StoryStudio";
+import { FontViewer } from "./ui/FontViewer";
 import { ErrorBoundary, Panel } from "./ui/shared";
 
-type Tab = "sprites" | "rooms" | "map" | "text" | "audio" | "story" | "save" | "condit" | "about";
+type Tab = "sprites" | "rooms" | "map" | "font" | "text" | "audio" | "story" | "save" | "condit" | "about";
 
 const TABS: { id: Tab; label: string }[] = [
   { id: "sprites", label: "◳ Sprites" },
   { id: "rooms", label: "▦ Rooms" },
   { id: "map", label: "🌍 Map" },
+  { id: "font", label: "Aa Font" },
   { id: "text", label: "✎ Text" },
   { id: "audio", label: "♪ Audio" },
   { id: "story", label: "✦ Story" },
@@ -92,6 +94,7 @@ export function App() {
         {tab === "sprites" && <SpriteViewer />}
         {tab === "rooms" && <RoomStudio />}
         {tab === "map" && <MapViewer />}
+        {tab === "font" && <FontViewer />}
         {tab === "text" && <TextStudio />}
         {tab === "audio" && <AudioStudio />}
         {tab === "story" && <StoryStudio />}

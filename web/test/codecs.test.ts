@@ -17,6 +17,7 @@ import { loadSpriteFile, decodeSprite, looksLikeSprite } from "../src/codecs/spr
 import { loadSal, encodeSal } from "../src/codecs/sal";
 import { loadTextTable, encodeTextTable, exportTextHsq, bytesToEditable, editableToBytes } from "../src/codecs/text";
 import { loadDialogue } from "../src/codecs/dialogue";
+import { decodeDnchar } from "../src/codecs/font";
 import { decodeVoc } from "../src/codecs/voc";
 import { heatmapColor, detectMapWidth } from "../src/codecs/map";
 import { hsqDecompress as hsqDec } from "../src/codecs/compression";
@@ -370,6 +371,34 @@ console.log("\nVOC sound:");
         skip("VOC vs Python", String(e));
       }
     } else skip("VOC vs Python", "python3 unavailable");
+  }
+}
+
+// ---------------------------------------------------------------------------
+// DNCHAR font: glyph widths + bitmaps must match the Python decoder
+// ---------------------------------------------------------------------------
+console.log("\nDNCHAR font:");
+{
+  const path = join(GD, "DNCHAR.BIN");
+  if (!existsSync(path)) skip("font", "DNCHAR.BIN missing");
+  else {
+    const glyphs = decodeDnchar(read(path));
+    ok("font decodes 256 glyphs", glyphs.length === 256);
+    if (PY) {
+      try {
+        py(
+          `import json,sys;sys.path.insert(0,'tools')\nfrom bin_decoder import decode_dnchar\ng=decode_dnchar(open(${JSON.stringify(path)},'rb').read())\njson.dump([[c['width'],list(c['rows'])] for c in g],open('/tmp/redune_font.json','w'))`,
+        );
+        const ref: [number, number[]][] = JSON.parse(readFileSync("/tmp/redune_font.json", "utf8"));
+        let mism = 0;
+        for (let i = 0; i < 256; i++) {
+          if (glyphs[i].width !== ref[i][0] || glyphs[i].rows.join(",") !== ref[i][1].join(",")) mism++;
+        }
+        ok("font matches Python (256 glyphs)", mism === 0, `${mism} mismatch`);
+      } catch (e) {
+        skip("font vs Python", String(e));
+      }
+    } else skip("font vs Python", "python3 unavailable");
   }
 }
 
