@@ -145,9 +145,15 @@ npm run build      # production bundle in web/dist/
 ```
 
 - **Sprites** — decode any sprite `*.HSQ` (palette + RLE/raw bipixels) to canvas, export PNG.
+- **Rooms** — decode `*.SAL` room layouts, composite them with their decoration sprites on a
+  canvas, edit/add/move sprite placements, and re-export a **byte-identical** `.SAL`.
+- **Map** — render `MAP.HSQ` world terrain as a heatmap.
+- **Text** — view/edit `PHRASE*.HSQ` dialogue and `COMMAND*.HSQ` UI strings (translations/mods),
+  re-export a working `.HSQ`.
+- **Audio** — decode and play sound effects (`SN*.HSQ/.VOC`) in-browser; export WAV.
 - **Save editor** — load `DUNE*.SAV`, edit globals / troops / sietches, export a working save.
 - **CONDIT studio** — browse & decompile the 713 condition entries, recompile expressions,
-  patch in-place and re-export `CONDIT.HSQ`.
+  patch in-place and re-export `CONDIT.HSQ` (warns if a non-CONDIT file is loaded).
 
 To enable the one-click "Load sample" buttons during dev, symlink your game files
 into the (git-ignored) assets dir:

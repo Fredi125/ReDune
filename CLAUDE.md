@@ -43,9 +43,9 @@ dune1992-re/
 ├── ui/                 ← Original single-file React save explorer (snapshot)
 │   └── save_explorer.jsx   ← React save file explorer
 ├── web/                ← Web Asset Studio (Vite + React + TypeScript)
-│   ├── src/codecs/         ← TS ports: compression, sprite, condit, save (validated vs Python)
-│   ├── src/ui/             ← SpriteViewer, SaveEditor, ConditStudio
-│   └── test/codecs.test.ts ← Byte-for-byte cross-check against lib/ using gamedata
+│   ├── src/codecs/         ← TS ports: compression, sprite, sal, text, voc, map, condit, save (validated vs Python)
+│   ├── src/ui/             ← Sprites, Rooms, Map, Text, Audio, SaveEditor, ConditStudio
+│   └── test/codecs.test.ts ← Byte-for-byte cross-check against lib/ using gamedata (35 checks)
 ├── docs/               ← Technical documentation
 │   ├── save_format.md      ← Complete save file map
 │   ├── condit_vm.md        ← CONDIT VM architecture
@@ -178,19 +178,25 @@ python3 tools/condit_decompiler.py samples/CONDIT.HSQ --chains
 - [x] SAL scene ENCODER → `tools/sal_encoder.py` (**100% byte-identical round-trip on all 4 SAL files**)
 - [x] Asset pipeline → `tools/extract_all.py` (gamedata → PNG/WAV/JSON + manifest, 166/265 auto-extracted)
 - [x] Web Asset Studio → `web/` (Vite+React+TS; viewer/editor/recompiler, all in-browser)
-- [x] TypeScript codec ports → `web/src/codecs/` (HSQ, F7, sprite, save, CONDIT decompile+recompile)
-- [x] Codec parity tests → `web/test/codecs.test.ts` (18 checks, byte-for-byte vs Python on real game files)
+- [x] TypeScript codec ports → `web/src/codecs/` (HSQ, F7, sprite, SAL, text, VOC, map, save, CONDIT decompile+recompile)
+- [x] Codec parity tests → `web/test/codecs.test.ts` (35 checks, byte-for-byte vs Python on real game files)
+- [x] Web Rooms tab → SAL decode/edit + canvas compositor (layout + decoration sprites) + byte-identical .SAL export
+- [x] Web Text tab → PHRASE/COMMAND string editor (lossless edit form, re-export .HSQ) for translations/mods
+- [x] Web Map tab → MAP.HSQ heatmap viewer; Web Audio tab → VOC sound playback + WAV export
+- [x] CONDIT studio file-type detection (warns when a sprite/other HSQ is loaded instead of CONDIT)
 
 ## Pending Work
 
 ### Medium Priority
-- [ ] Web app: SAL room compositor (combine `sal_decoder` layout + sprites onto canvas)
 - [ ] Web app: dialogue/story browser (CONDIT×DIALOGUE×PHRASE) — the "visual novel" tier
 - [ ] Improve CONDIT recompiler roundtrip beyond 63.7% (optimal operand-width encoding)
+- [ ] SAL polygon/gradient shading in the room compositor (currently geometry preview only)
+- [ ] True MAP globe projection (via TABLAT) instead of the row-major heatmap
 
 ### Low Priority
 - [ ] Sprite re-encoder (image → HSQ sprite) for full graphic-mod round-trips
 - [ ] Complete game state editor (NPCs + smugglers in the web UI)
+- [ ] DUNE.DAT repack inside the web app (load/replace/download the master archive)
 
 ## External References
 
