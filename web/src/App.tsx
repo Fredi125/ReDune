@@ -62,7 +62,8 @@ function About() {
             <b>Audio</b> — decode and play sound effects (<code>SN*.HSQ/.VOC</code>) in-browser; export WAV.
           </li>
           <li>
-            <b>Music</b> — decode HERAD music (<code>*.HSQ/.AGD/.M32</code>) and export a Standard MIDI file.
+            <b>Music</b> — decode HERAD music (<code>*.HSQ/.AGD/.M32</code>), play it in-browser (approximate synth)
+            and export a Standard MIDI file.
           </li>
           <li>
             <b>Video</b> — decode and play <code>*.HNM</code> cutscenes on canvas (frame stepper + soundtrack); export WAV.
