@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { decodeVoc, vocToWav, type VocResult } from "../codecs/voc";
+import { decodeVoc, encodeVoc, encodeVocHsq, vocToWav, wavToSamples, type VocResult } from "../codecs/voc";
 import { downloadBytes, LoadBar, Panel } from "./shared";
 
 function Waveform({ v }: { v: VocResult }) {
@@ -42,6 +42,24 @@ export function AudioStudio() {
   const [playing, setPlaying] = useState(false);
   const ctxRef = useRef<AudioContext | null>(null);
   const srcRef = useRef<AudioBufferSourceNode | null>(null);
+
+  const wavInput = useRef<HTMLInputElement>(null);
+
+  const importWav = (file: File) => {
+    stop();
+    setError("");
+    const r = new FileReader();
+    r.onload = () => {
+      try {
+        const { samples, sampleRate } = wavToSamples(new Uint8Array(r.result as ArrayBuffer));
+        setVoc({ samples, sampleRate, duration: sampleRate > 0 ? samples.length / sampleRate : 0, soundBlocks: 1 });
+        setName(file.name.replace(/\.[^.]+$/, ""));
+      } catch (e) {
+        setError("WAV import failed: " + e);
+      }
+    };
+    r.readAsArrayBuffer(file);
+  };
 
   const load = (n: string, bytes: Uint8Array) => {
     stop();
@@ -111,6 +129,16 @@ export function AudioStudio() {
               </label>
               <button className="btn primary" onClick={playing ? stop : play}>
                 {playing ? "■ Stop" : "▶ Play"}
+              </button>
+              <button className="btn" onClick={() => wavInput.current?.click()}>
+                ↑ Replace from WAV
+              </button>
+              <input ref={wavInput} type="file" accept=".wav,audio/wav" style={{ display: "none" }} onChange={(e) => e.target.files?.[0] && importWav(e.target.files[0])} />
+              <button className="btn" onClick={() => downloadBytes(`${name}.VOC`, encodeVoc(voc.samples, voc.sampleRate))}>
+                ⤓ VOC
+              </button>
+              <button className="btn" onClick={() => downloadBytes(`${name}.HSQ`, encodeVocHsq(voc.samples, voc.sampleRate))}>
+                ⤓ HSQ
               </button>
               <button className="btn" onClick={() => downloadBytes(`${name}.wav`, vocToWav(voc))}>
                 ⤓ WAV

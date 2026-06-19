@@ -23,7 +23,7 @@ import { loadGradientTables, loadGlobe } from "../src/codecs/globdata";
 import { parseTablat } from "../src/codecs/tablat";
 import { HnmFile } from "../src/codecs/hnm";
 import { loadHerad } from "../src/codecs/herad";
-import { decodeVoc } from "../src/codecs/voc";
+import { decodeVoc, encodeVoc, vocToWav, wavToSamples } from "../src/codecs/voc";
 import { heatmapColor, detectMapWidth } from "../src/codecs/map";
 import { hsqDecompress as hsqDec } from "../src/codecs/compression";
 
@@ -366,6 +366,12 @@ console.log("\nVOC sound:");
   else {
     const v = decodeVoc(read(cand));
     ok("VOC decodes", v.samples.length > 0 && v.sampleRate > 0, `${v.sampleRate}Hz, ${v.samples.length} samples, ${v.duration.toFixed(2)}s`);
+    // encode round-trip: re-encode the decoded samples and decode again
+    const v2 = decodeVoc(encodeVoc(v.samples, v.sampleRate));
+    ok("VOC encode round-trip", eq(v2.samples, v.samples) && v2.sampleRate === v.sampleRate, `${v2.sampleRate}Hz`);
+    // WAV import round-trip: VOC -> WAV -> samples
+    const w = wavToSamples(vocToWav(v));
+    ok("WAV import round-trip", eq(w.samples, v.samples) && w.sampleRate === v.sampleRate);
     if (PY) {
       try {
         py(

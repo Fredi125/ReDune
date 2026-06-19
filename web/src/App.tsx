@@ -63,7 +63,8 @@ function About() {
             (translations/mods) and re-export a working <code>.HSQ</code>.
           </li>
           <li>
-            <b>Audio</b> — decode and play sound effects (<code>SN*.HSQ/.VOC</code>) in-browser; export WAV.
+            <b>Audio</b> — decode &amp; play sound effects (<code>SN*.HSQ/.VOC</code>); import a WAV and re-export a
+            working <code>.VOC</code>/<code>.HSQ</code> (sound mods), or export WAV.
           </li>
           <li>
             <b>Music</b> — decode HERAD music + its OPL2 instrument patches, play it in-browser via a 2-operator FM
