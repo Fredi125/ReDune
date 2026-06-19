@@ -1,10 +1,19 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { loadHerad, parseTrackEvents, type HeradLoad } from "../codecs/herad";
+import { loadHerad, parseTrackEvents, type HeradInstrument, type HeradLoad } from "../codecs/herad";
+import { midiToFreq, oplWaves, playFmNote } from "../audio/heradFm";
 import { downloadBytes, LoadBar, Panel, Tag } from "./shared";
 
 const FMT_LABEL: Record<string, string> = { OPL2: "OPL2 / AdLib", AGD: "Tandy / PCjr", M32: "Roland MT-32" };
 const TPQ = 120;
 const MAX_VOICES = 6000;
+
+// Fallback patch for files with no OPL instrument block (e.g. M32).
+const DEFAULT_INST: HeradInstrument = {
+  index: 0, mode: 0, feedback: 0, con: 1,
+  modMul: 1, carMul: 1, modOut: 22, carOut: 0,
+  modA: 11, modD: 6, modS: 4, modR: 6, carA: 13, carD: 7, carS: 2, carR: 6,
+  modWave: 0, carWave: 0, modOutVel: 0, carOutVel: 1,
+};
 
 export function HeradStudio() {
   const [name, setName] = useState("");
@@ -52,55 +61,42 @@ export function HeradStudio() {
     ctxRef.current = ctx;
     const tick = 60 / bpm / TPQ; // seconds per tick
     const master = ctx.createGain();
-    master.gain.value = 0.16;
+    master.gain.value = 0.42;
     master.connect(ctx.destination);
-    const t0 = ctx.currentTime + 0.06;
+    const waves = oplWaves(ctx);
+    const insts = loaded.instruments;
+    const t0 = ctx.currentTime + 0.08;
     let voices = 0;
     let maxEnd = t0;
 
     for (const trk of loaded.info.tracks) {
       const events = parseTrackEvents(trk.data, loaded.info.format);
       let cur = 0;
-      const active = new Map<number, { osc: OscillatorNode; g: GainNode }>();
+      let prog = 0;
+      const active = new Map<number, { instIdx: number; freq: number; vel: number; t0: number }>();
+      const notes: { instIdx: number; freq: number; vel: number; t0: number; t1: number }[] = [];
       for (const e of events) {
         cur += e.delta * tick;
-        const t = t0 + cur;
-        if (e.type === "NOTE_ON" && e.data[1] > 0) {
-          if (voices >= MAX_VOICES) break;
-          const note = e.data[0];
-          const prev = active.get(note);
-          if (prev) {
-            prev.g.gain.setTargetAtTime(0, t, 0.01);
-            prev.osc.stop(t + 0.05);
-          }
-          const osc = ctx.createOscillator();
-          osc.type = "square";
-          osc.frequency.value = 440 * Math.pow(2, (note - 69) / 12);
-          const g = ctx.createGain();
-          const vol = Math.min(0.5, (e.data[1] / 127) * 0.5);
-          g.gain.setValueAtTime(0, t);
-          g.gain.linearRampToValueAtTime(vol, t + 0.008);
-          osc.connect(g);
-          g.connect(master);
-          osc.start(t);
-          active.set(note, { osc, g });
-          voices++;
+        if (e.type === "PROG_CHG") prog = e.data[0];
+        else if (e.type === "NOTE_ON" && e.data[1] > 0) {
+          active.set(e.data[0], { instIdx: prog, freq: midiToFreq(e.data[0]), vel: e.data[1], t0: t0 + cur });
         } else if (e.type === "NOTE_OFF" || (e.type === "NOTE_ON" && e.data[1] === 0)) {
-          const v = active.get(e.data[0]);
-          if (v) {
-            v.g.gain.setTargetAtTime(0, t, 0.03);
-            v.osc.stop(t + 0.15);
+          const a = active.get(e.data[0]);
+          if (a) {
+            notes.push({ ...a, t1: t0 + cur });
             active.delete(e.data[0]);
-            maxEnd = Math.max(maxEnd, t + 0.15);
           }
         }
       }
-      const tEnd = t0 + cur + 0.2;
-      for (const [, v] of active) {
-        v.g.gain.setTargetAtTime(0, tEnd, 0.05);
-        v.osc.stop(tEnd + 0.2);
+      const tEnd = t0 + cur + 0.3;
+      for (const [, a] of active) notes.push({ ...a, t1: tEnd });
+      for (const nt of notes) {
+        if (voices >= MAX_VOICES) break;
+        const inst = insts[nt.instIdx] ?? insts[0] ?? DEFAULT_INST;
+        const end = playFmNote(ctx, master, waves, inst, nt.freq, nt.vel, nt.t0, nt.t1);
+        maxEnd = Math.max(maxEnd, end);
+        voices++;
       }
-      maxEnd = Math.max(maxEnd, tEnd + 0.2);
     }
 
     setPlaying(true);
@@ -134,7 +130,7 @@ export function HeradStudio() {
         >
           <div className="row" style={{ gap: 8, marginBottom: 10 }}>
             <Tag color="var(--blue)">{loaded.info.tracks.length} tracks</Tag>
-            <Tag color="var(--green)">{loaded.info.nInstruments} instruments</Tag>
+            <Tag color="var(--green)">{loaded.instruments.length} FM patches</Tag>
             <Tag color="var(--amber)">{loaded.midi.length.toLocaleString()} B MIDI</Tag>
           </div>
           <table>
@@ -158,9 +154,9 @@ export function HeradStudio() {
             </tbody>
           </table>
           <div className="small muted" style={{ marginTop: 10 }}>
-            <b>▶ Play</b> uses a lightweight WebAudio synth on the decoded note events — you hear the actual composition,
-            but it's <i>not</i> authentic FM/MT-32 timbre. For true sound, <b>⤓ MIDI</b> exports a Standard MIDI File
-            (faithful FM playback would need an OPL2 emulator + the still-undecoded instrument-patch format).
+            <b>▶ Play</b> renders the decoded <b>OPL2 instrument patches</b> through a 2-operator WebAudio FM synth
+            (real waveforms, MULT, TL, ADSR and FM/additive routing per patch) — close to the AdLib timbre, though not a
+            cycle-exact YM3812 emulator. <b>⤓ MIDI</b> exports a Standard MIDI File for external players.
           </div>
         </Panel>
       )}

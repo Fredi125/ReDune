@@ -17,6 +17,12 @@ export type HeradFmt = typeof FMT_OPL2 | typeof FMT_AGD | typeof FMT_M32;
 const DATA_START_OPL2 = 0x0032;
 const DATA_START_AGD = 0x0052;
 const META_OFFSET = 0x2c;
+export const HERAD_INST_SIZE = 40;
+
+/** F-number per chromatic note (C..B), from adplug CheradPlayer::FNum. */
+export const HERAD_FNUM = [343, 364, 385, 408, 433, 459, 486, 515, 546, 579, 614, 650];
+/** OPL2 frequency-multiplier ratios indexed by the 4-bit MULT field. */
+export const OPL_MULT = [0.5, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 10, 12, 12, 15, 15];
 
 function u16(d: Uint8Array, o: number): number {
   return d[o] | (d[o + 1] << 8);
@@ -251,11 +257,75 @@ export function exportMidi(data: Uint8Array, name = "", ticksPerQuarter = 120): 
 export interface HeradLoad {
   info: HeradInfo;
   midi: Uint8Array;
+  instruments: HeradInstrument[];
 }
 
-/** Load a HERAD file (decompressing HSQ if needed) and produce its MIDI. */
+/**
+ * A decoded HERAD FM instrument patch (40-byte record). Field layout from
+ * adplug's herad_inst_data struct; the OPL operator params drive FM synthesis.
+ */
+export interface HeradInstrument {
+  index: number;
+  mode: number;
+  feedback: number;
+  con: number; // >0 = FM (modulator->carrier), <=0 = additive
+  modMul: number;
+  carMul: number;
+  modOut: number; // total level (attenuation 0..63, 0 = loudest)
+  carOut: number;
+  modA: number;
+  modD: number;
+  modS: number;
+  modR: number;
+  carA: number;
+  carD: number;
+  carS: number;
+  carR: number;
+  modWave: number;
+  carWave: number;
+  modOutVel: number;
+  carOutVel: number;
+}
+
+const i8 = (b: number) => (b > 127 ? b - 256 : b);
+
+/** Parse the OPL2 instrument block (40-byte records starting at instOffset). */
+export function parseInstruments(data: Uint8Array, instOffset: number): HeradInstrument[] {
+  const out: HeradInstrument[] = [];
+  if (instOffset <= 0 || instOffset >= data.length) return out;
+  const n = Math.floor((data.length - instOffset) / HERAD_INST_SIZE);
+  for (let i = 0; i < n; i++) {
+    const o = instOffset + i * HERAD_INST_SIZE;
+    if (o + HERAD_INST_SIZE > data.length) break;
+    out.push({
+      index: i,
+      mode: i8(data[o]),
+      modMul: data[o + 3] & 15,
+      feedback: data[o + 4] & 7,
+      modA: data[o + 5] & 15,
+      modS: data[o + 6] & 15,
+      modD: data[o + 8] & 15,
+      modR: data[o + 9] & 15,
+      modOut: data[o + 10] & 63,
+      con: i8(data[o + 14]),
+      carMul: data[o + 16] & 15,
+      carA: data[o + 18] & 15,
+      carS: data[o + 19] & 15,
+      carD: data[o + 21] & 15,
+      carR: data[o + 22] & 15,
+      carOut: data[o + 23] & 63,
+      modWave: data[o + 28] & 3,
+      carWave: data[o + 29] & 3,
+      modOutVel: i8(data[o + 30]),
+      carOutVel: i8(data[o + 31]),
+    });
+  }
+  return out;
+}
+
+/** Load a HERAD file (decompressing HSQ if needed) and produce its MIDI + instruments. */
 export function loadHerad(raw: Uint8Array, name = ""): HeradLoad {
   const data = isHsq(raw) ? hsqDecompress(raw) : raw;
   const info = parseHerad(data, name);
-  return { info, midi: exportMidi(data, name) };
+  return { info, midi: exportMidi(data, name), instruments: parseInstruments(data, info.instOffset) };
 }

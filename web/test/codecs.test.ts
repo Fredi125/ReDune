@@ -571,8 +571,12 @@ for (const f of ["ARRAKIS.HSQ", "ARRAKIS.AGD", "ARRAKIS.M32"]) {
     skip(`HERAD ${f}`, "file missing");
     continue;
   }
-  const { info, midi } = loadHerad(read(path), f);
+  const { info, midi, instruments } = loadHerad(read(path), f);
   ok(`HERAD ${f} decodes`, midi.length > 0 && midi[0] === 0x4d, `${info.format}, ${info.tracks.length} tracks, ${midi.length}B MIDI`);
+  if (f.endsWith(".HSQ")) {
+    const instOk = instruments.length > 0 && instruments.every((x) => x.modWave <= 3 && x.carWave <= 3 && x.modMul <= 15 && x.carMul <= 15 && x.modOut <= 63 && x.carOut <= 63);
+    ok(`HERAD ${f} instruments parse`, instOk, `${instruments.length} FM patches`);
+  }
   if (PY) {
     try {
       const ref = "/tmp/redune_herad.mid";

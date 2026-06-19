@@ -202,11 +202,12 @@ python3 tools/condit_decompiler.py samples/CONDIT.HSQ --chains
 - [x] Complete game state editor → NPCs + smugglers added to the web Save editor (offsets verified vs Python)
 - [x] MAP globe view → `web/src/codecs/globdata.ts parseGlobe` (64 latitude scanlines, verified vs Python) + experimental sphere render in the Map tab
 
-- [x] In-browser HERAD playback → Music tab plays decoded note events via a WebAudio synth (approximate; MIDI export for faithful sound)
+- [x] In-browser HERAD playback → Music tab plays decoded note events via a WebAudio synth
+- [x] HERAD OPL2 instrument-patch format decoded (`parseInstruments`, 40-byte records; verified) + 2-op WebAudio FM synth driven by the real patches (`web/src/audio/heradFm.ts`)
 
 ### Low Priority
-- [ ] True OPL2/MT-32 FM synthesis for HERAD (needs the instrument-patch format RE + an OPL2 emulator)
-- [ ] Exact (pixel-faithful) MAP globe projection from the ASM (sub_1BA75) — current globe is an approximation
+- [ ] Cycle-exact YM3812 (OPL2) emulator for bit-perfect HERAD timbre (current FM synth is a faithful 2-op approximation)
+- [ ] Exact (pixel-faithful) MAP globe projection from the ASM (sub_1BA75) — current globe is data-driven but not ASM-verified
 
 ## External References
 
