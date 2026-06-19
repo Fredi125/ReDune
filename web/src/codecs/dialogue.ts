@@ -11,7 +11,7 @@
  *   byte3: phrase id low byte
  * CONDIT index = cond_type*256 + byte1 ; phrase id = ((byte2&3)<<8) | byte3
  */
-import { hsqDecompress } from "./compression";
+import { hsqCompress, hsqDecompress } from "./compression";
 
 export interface DialogueRecord {
   spoken: boolean;
@@ -87,4 +87,40 @@ export function loadDialogue(raw: Uint8Array, isRaw = false): DialogueFile {
   }
   const entries: DialogueEntry[] = offsets.map((off, i) => ({ entry: i, offset: off, records: parseEntry(data, off) }));
   return { data, entryCount, offsets, entries };
+}
+
+/** Recompute a record's decoded fields from its 4 raw bytes (after an edit). */
+export function refreshRecord(r: DialogueRecord): void {
+  const [b0, b1, b2, b3] = r.raw;
+  const fresh = decodeRecord(b0, b1, b2, b3);
+  Object.assign(r, fresh);
+}
+
+/**
+ * Encode the dialogue table back to bytes (rebuilds the offset table; each entry
+ * = its 4-byte records followed by an 0xFFFF terminator). Byte-identical to the
+ * decompressed original for an unedited table.
+ */
+export function encodeDialogue(entries: DialogueEntry[]): Uint8Array {
+  const blobs = entries.map((e) => {
+    const b: number[] = [];
+    for (const r of e.records) b.push(r.raw[0] & 0xff, r.raw[1] & 0xff, r.raw[2] & 0xff, r.raw[3] & 0xff);
+    b.push(0xff, 0xff);
+    return b;
+  });
+  const out: number[] = [];
+  let pos = entries.length * 2;
+  const offs: number[] = [];
+  for (const blob of blobs) {
+    offs.push(pos);
+    pos += blob.length;
+  }
+  for (const off of offs) out.push(off & 0xff, (off >> 8) & 0xff);
+  for (const blob of blobs) for (const x of blob) out.push(x);
+  return Uint8Array.from(out);
+}
+
+/** Re-compress an edited dialogue table into a working DIALOGUE.HSQ. */
+export function exportDialogueHsq(entries: DialogueEntry[]): Uint8Array {
+  return hsqCompress(encodeDialogue(entries));
 }

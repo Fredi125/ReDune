@@ -16,7 +16,7 @@ import { DuneSave } from "../src/codecs/save";
 import { loadSpriteFile, decodeSprite, looksLikeSprite, encodeSpriteFile } from "../src/codecs/sprite";
 import { loadSal, encodeSal } from "../src/codecs/sal";
 import { loadTextTable, encodeTextTable, exportTextHsq, bytesToEditable, editableToBytes } from "../src/codecs/text";
-import { loadDialogue } from "../src/codecs/dialogue";
+import { loadDialogue, encodeDialogue } from "../src/codecs/dialogue";
 import { decodeDnchar } from "../src/codecs/font";
 import { parseDat, extractFile, buildDat, rebuildDat } from "../src/codecs/dat";
 import { loadGradientTables, loadGlobe } from "../src/codecs/globdata";
@@ -341,6 +341,7 @@ console.log("\nDIALOGUE table:");
     const df = loadDialogue(read(path));
     const totalRecords = df.entries.reduce((n, e) => n + e.records.length, 0);
     ok("DIALOGUE parses", df.entryCount > 0 && totalRecords > 0, `${df.entryCount} entries, ${totalRecords} records`);
+    ok("DIALOGUE re-encode byte-identical", eq(encodeDialogue(df.entries), hsqDec(read(path))), `${df.data.length}B`);
     if (PY) {
       try {
         py(

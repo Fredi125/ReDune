@@ -1,8 +1,8 @@
 import { useMemo, useState } from "react";
-import { loadDialogue, type DialogueFile } from "../codecs/dialogue";
+import { exportDialogueHsq, loadDialogue, refreshRecord, type DialogueFile, type DialogueRecord } from "../codecs/dialogue";
 import { conditionExpr, loadCondit, type ConditFile } from "../codecs/condit";
 import { displayText, loadTextTable, type TextTable } from "../codecs/text";
-import { hex, LoadBar, Panel, Tag } from "./shared";
+import { downloadBytes, hex, LoadBar, NumberField, Panel, Tag } from "./shared";
 
 export function StoryStudio() {
   const [dlg, setDlg] = useState<DialogueFile | null>(null);
@@ -11,6 +11,12 @@ export function StoryStudio() {
   const [phrName, setPhrName] = useState("");
   const [sel, setSel] = useState(0);
   const [search, setSearch] = useState("");
+  const [, setVer] = useState(0);
+  const editRaw = (r: DialogueRecord, fn: () => void) => {
+    fn();
+    refreshRecord(r);
+    setVer((v) => v + 1);
+  };
 
   const phraseText = (idx: number): string | null => {
     if (!phr) return null;
@@ -62,8 +68,12 @@ export function StoryStudio() {
           </div>
 
           <div className="grow">
-            <Panel title={entry ? `Entry #${entry.entry} — ${entry.records.length} options` : "Dialogue entry"} accent="var(--purple)">
-              {!cf && <div className="small muted" style={{ marginBottom: 8 }}>Load CONDIT.HSQ to resolve conditions; PHRASE to resolve text.</div>}
+            <Panel
+              title={entry ? `Entry #${entry.entry} — ${entry.records.length} options` : "Dialogue entry"}
+              accent="var(--purple)"
+              right={dlg ? <button className="btn primary" onClick={() => downloadBytes("DIALOGUE.HSQ", exportDialogueHsq(dlg.entries))}>⤓ Export DIALOGUE.HSQ</button> : undefined}
+            >
+              {!cf && <div className="small muted" style={{ marginBottom: 8 }}>Load CONDIT.HSQ to resolve conditions; PHRASE to resolve text. Fields below are editable.</div>}
               <div className="scroll" style={{ maxHeight: 480 }}>
                 {entry?.records.map((r, i) => {
                   const expr = condExpr(r.conditIdx);
@@ -87,6 +97,19 @@ export function StoryStudio() {
                       <div className="small" style={{ marginTop: 2 }}>
                         <span className="muted">SAY</span> <span className="muted">phrase {hex(r.phraseIdx, 3)}:</span>{" "}
                         {text !== null ? <span style={{ color: "var(--text)" }}>“{text}”</span> : <span className="muted">(load PHRASE to see text)</span>}
+                      </div>
+                      <div className="row" style={{ gap: 4, marginTop: 4, alignItems: "flex-end" }}>
+                        <NumberField label="NPC" value={r.npcId} max={255} onChange={(v) => editRaw(r, () => (r.raw[1] = v & 0xff))} style={{ width: 64 }} />
+                        <div className="field" style={{ width: 56 }}>
+                          <label>type</label>
+                          <select value={r.condType} onChange={(e) => editRaw(r, () => (r.raw[2] = (r.raw[2] & ~0xc0) | ((+e.target.value & 3) << 6)))}>
+                            {[0, 1, 2, 3].map((t) => (<option key={t} value={t}>{t}</option>))}
+                          </select>
+                        </div>
+                        <NumberField label="phrase" value={r.phraseIdx} max={1023} onChange={(v) => editRaw(r, () => { r.raw[2] = (r.raw[2] & ~0x03) | ((v >> 8) & 3); r.raw[3] = v & 0xff; })} style={{ width: 76 }} />
+                        <label className="small muted"><input type="checkbox" checked={r.spoken} onChange={(e) => editRaw(r, () => (r.raw[0] = (r.raw[0] & ~0x80) | (e.target.checked ? 0x80 : 0)))} /> spoken</label>
+                        <label className="small muted"><input type="checkbox" checked={r.repeatable} onChange={(e) => editRaw(r, () => (r.raw[0] = (r.raw[0] & ~0x40) | (e.target.checked ? 0x40 : 0)))} /> repeat</label>
+                        <label className="small muted"><input type="checkbox" checked={!!r.menuFlag} onChange={(e) => editRaw(r, () => (r.raw[2] = (r.raw[2] & ~0x0c) | (e.target.checked ? 0x04 : 0)))} /> menu</label>
                       </div>
                     </div>
                   );

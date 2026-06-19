@@ -70,7 +70,8 @@ function About() {
           </li>
           <li>
             <b>Story</b> — cross-reference <code>DIALOGUE.HSQ</code> × <code>CONDIT.HSQ</code> × <code>PHRASE*.HSQ</code>:
-            see every dialogue option, the condition that gates it, and the actual line spoken.
+            see every dialogue option with its gating condition and spoken line; edit records and re-export
+            <code>DIALOGUE.HSQ</code>.
           </li>
           <li>
             <b>Save editor</b> — load <code>DUNE*.SAV</code>, edit globals / troops / sietches / NPCs / smugglers,
