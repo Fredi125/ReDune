@@ -18,6 +18,7 @@ import { loadSal, encodeSal } from "../src/codecs/sal";
 import { loadTextTable, encodeTextTable, exportTextHsq, bytesToEditable, editableToBytes } from "../src/codecs/text";
 import { loadDialogue } from "../src/codecs/dialogue";
 import { decodeDnchar } from "../src/codecs/font";
+import { parseDat, extractFile, buildDat, rebuildDat } from "../src/codecs/dat";
 import { decodeVoc } from "../src/codecs/voc";
 import { heatmapColor, detectMapWidth } from "../src/codecs/map";
 import { hsqDecompress as hsqDec } from "../src/codecs/compression";
@@ -436,6 +437,47 @@ console.log("\nMAP heatmap:");
       skip("map vs Python", String(e));
     }
   } else skip("map vs Python", "python3 unavailable");
+}
+
+// ---------------------------------------------------------------------------
+// DUNE.DAT archive: parse / extract / build (byte-identical vs Python) / replace
+// (validated against a synthetic archive since the real DUNE.DAT isn't shipped)
+// ---------------------------------------------------------------------------
+console.log("\nDUNE.DAT archive:");
+{
+  const srcs = ["CONDIT.HSQ", "PALACE.SAL", "DNCHAR.BIN"].map((f) => join(GD, f));
+  if (!PY) skip("DAT", "python3 unavailable");
+  else if (!srcs.every(existsSync)) skip("DAT", "source files missing");
+  else {
+    try {
+      py(
+        `import sys;sys.path.insert(0,'.');sys.path.insert(0,'tools')\nfrom dat_decoder import build_dat\nbuild_dat([('CONDIT.HSQ','gamedata/CONDIT.HSQ',0),('PALACE.SAL','gamedata/PALACE.SAL',1),('DNCHAR.BIN','gamedata/DNCHAR.BIN',0)],'/tmp/redune_test.dat')`,
+      );
+      const datBytes = read("/tmp/redune_test.dat");
+      const dat = parseDat(datBytes);
+      ok("DAT parses entries", dat.entries.length === 3 && dat.entries[0].name === "CONDIT.HSQ" && dat.entries[1].flag === 1, `${dat.entries.length} files`);
+
+      const condit = read(srcs[0]);
+      ok("DAT extract matches source", eq(extractFile(dat, dat.entries[0]), condit));
+
+      const files = [
+        { name: "CONDIT.HSQ", data: read(srcs[0]), flag: 0 },
+        { name: "PALACE.SAL", data: read(srcs[1]), flag: 1 },
+        { name: "DNCHAR.BIN", data: read(srcs[2]), flag: 0 },
+      ];
+      ok("DAT build byte-identical to Python", eq(buildDat(files), datBytes), `${datBytes.length}B`);
+
+      const repl = new Map([["PALACE.SAL", Uint8Array.from([1, 2, 3, 4, 5])]]);
+      const rebuilt = parseDat(rebuildDat(dat, repl));
+      const pal = rebuilt.entries.find((e) => e.name === "PALACE.SAL")!;
+      ok(
+        "DAT replace round-trips",
+        eq(extractFile(rebuilt, pal), Uint8Array.from([1, 2, 3, 4, 5])) && eq(extractFile(rebuilt, rebuilt.entries[0]), condit),
+      );
+    } catch (e) {
+      ok("DAT", false, String(e));
+    }
+  }
 }
 
 // ---------------------------------------------------------------------------

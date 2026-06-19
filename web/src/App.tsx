@@ -8,9 +8,10 @@ import { MapViewer } from "./ui/MapViewer";
 import { AudioStudio } from "./ui/AudioStudio";
 import { StoryStudio } from "./ui/StoryStudio";
 import { FontViewer } from "./ui/FontViewer";
+import { DatStudio } from "./ui/DatStudio";
 import { ErrorBoundary, Panel } from "./ui/shared";
 
-type Tab = "sprites" | "rooms" | "map" | "font" | "text" | "audio" | "story" | "save" | "condit" | "about";
+type Tab = "sprites" | "rooms" | "map" | "font" | "text" | "audio" | "story" | "save" | "condit" | "archive" | "about";
 
 const TABS: { id: Tab; label: string }[] = [
   { id: "sprites", label: "◳ Sprites" },
@@ -22,6 +23,7 @@ const TABS: { id: Tab; label: string }[] = [
   { id: "story", label: "✦ Story" },
   { id: "save", label: "⚔ Save editor" },
   { id: "condit", label: "⎔ CONDIT studio" },
+  { id: "archive", label: "🗜 Archive" },
   { id: "about", label: "ⓘ About" },
 ];
 
@@ -64,6 +66,10 @@ function About() {
             <b>CONDIT studio</b> — browse &amp; decompile the 713 condition entries, recompile expressions, patch
             in-place and re-export <code>CONDIT.HSQ</code>.
           </li>
+          <li>
+            <b>Archive</b> — open <code>DUNE.DAT</code>, extract/decompress any of its files, replace them with your
+            edited assets, and rebuild a working <code>DUNE.DAT</code> — the full mod loop, all in-browser.
+          </li>
         </ul>
         <p className="small muted">
           Tip: to load files with one click, symlink or copy your extracted game files into <code>web/public/game/</code>{" "}
@@ -100,6 +106,7 @@ export function App() {
         {tab === "story" && <StoryStudio />}
         {tab === "save" && <SaveEditor />}
         {tab === "condit" && <ConditStudio />}
+        {tab === "archive" && <DatStudio />}
         {tab === "about" && <About />}
       </ErrorBoundary>
       <div className="sub" style={{ marginTop: 24, textAlign: "center", color: "var(--dim)" }}>
