@@ -190,13 +190,22 @@ python3 tools/condit_decompiler.py samples/CONDIT.HSQ --chains
 - [x] SAL polygon gradient shading → GLOBDATA gradient tables (subtype&0x7F → table → room palette), filled rooms
 - [x] Web Video tab → HNM cutscene player (decode + canvas playback + soundtrack); frame checksums match Python
 - [x] Web Music tab → HERAD decoder + MIDI export (OPL2/AGD/M32; byte-identical MIDI vs Python)
+- [x] DIALOGUE/font/VOC re-encoders → `exportDialogueHsq`, `encodeDnchar` (byte-identical), `encodeVoc`/`wavToSamples` (WAV→VOC import); editable Story tab, font pixel editor, Audio "Replace from WAV"
+- [x] Global auto-detect "Open file…" + window drag-and-drop → `web/src/ui/detect.ts` (extension + name hints + content sniff) routes any file to the right tab (`useIncoming` in every tab); verified by routing tests
+- [x] Resilience pass → FileReader error/empty guards (shared LoadBar + App), try/catch in `useIncoming` (always clears), GLOBDATA.bin → Map routing
 
 ## Pending Work
 
 ### Medium Priority
-- [ ] Improve CONDIT recompiler roundtrip beyond 63.7% (optimal operand-width encoding)
 - [ ] In-browser OPL2/MT-32 synthesis for true HERAD playback (currently MIDI export only)
 - [ ] True MAP globe projection (via TABLAT) instead of the row-major heatmap
+
+- [x] CONDIT recompiler roundtrip 63.7% → **100% (713/713)**: op-byte is the
+  word-pointer jump-table offset, so `op_index = (byte & 0x1F) >> 1` (was read as
+  `byte & 0x1F`, mislabeling operators and leaving AND/OR as `?16`/`?18`); word
+  vars emit type byte `0x02` (was `0x00`). Fixed in `web/src/codecs/condit.ts`,
+  `tools/condit_decompiler.py`, `tools/condit_recompiler.py`; docs/condit_vm.md
+  corrected. All 713 entries now decompile to readable, correct operators.
 
 - [x] Sprite re-encoder → `web/src/codecs/sprite.ts encodeSpriteFile` (raw mode, decode-equivalent round-trip) + PNG import in Sprites tab
 - [x] Complete game state editor → NPCs + smugglers added to the web Save editor (offsets verified vs Python)

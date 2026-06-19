@@ -197,7 +197,8 @@ console.log("\nCONDIT decompiler/recompiler:");
 
     const entries = conditEntries(cf, false).filter((e) => !e.empty);
 
-    // recompiler roundtrip rate (Python reports ~63.7%)
+    // Recompiler roundtrip: byte-exact for every entry once the op-byte is
+    // read as (b & 0x1F) >> 1 and word vars are emitted as 0x02 (was 63.7%).
     let rtPass = 0;
     let rtTotal = 0;
     for (const e of entries) {
@@ -211,7 +212,11 @@ console.log("\nCONDIT decompiler/recompiler:");
       }
     }
     const rate = rtPass / rtTotal;
-    ok("CONDIT recompiler roundtrip rate >= 60%", rate >= 0.6, `${(rate * 100).toFixed(1)}% (${rtPass}/${rtTotal})`);
+    ok("CONDIT recompiler roundtrip rate == 100%", rtPass === rtTotal, `${(rate * 100).toFixed(1)}% (${rtPass}/${rtTotal})`);
+
+    // Every operator now decodes to a real symbol (no "?N" unknown ops left).
+    const unknownOps = conditEntries(cf, true).filter((e) => !e.empty && /\?\d/.test(e.expr)).length;
+    ok("CONDIT has no unknown (?N) operators", unknownOps === 0, `${unknownOps} entries with ?N`);
 
     if (PY) {
       try {

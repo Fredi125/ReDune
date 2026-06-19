@@ -56,6 +56,21 @@ export function readOperand(data: Uint8Array, pos: number): OperandRead {
 // Expression decompiler (sub_C266)
 // ---------------------------------------------------------------------------
 
+/**
+ * Map a control byte to its operation index. `off_C246` is a jump table of
+ * WORD pointers, so the engine uses the (masked) control byte directly as a
+ * byte offset into it — the operation index is therefore byte/2. Only even
+ * op-bytes occur in the shipped CONDIT.HSQ, confirming this. (The earlier
+ * `byte & 0x1F` reading mislabeled most operators and left AND/OR as "?N".)
+ */
+function opIndexOf(b: number): number {
+  return (b & 0x1f) >> 1;
+}
+/** Inverse of opIndexOf for an inline op byte (separator = 0x80 | this). */
+function opByteOf(idx: number): number {
+  return (idx << 1) & 0x7f;
+}
+
 export function decompileEntry(data: Uint8Array, start: number, annotate = true): { expr: string; end: number } {
   let pos = start;
   const stack: [string, string][] = [];
@@ -69,7 +84,7 @@ export function decompileEntry(data: Uint8Array, start: number, annotate = true)
     const b = data[pos++];
     if (b === 0xff) break;
     if (b >= 0x80) {
-      const opIdx = b & 0x1f;
+      const opIdx = opIndexOf(b);
       const opInfo = CONDIT_OPS[opIdx];
       const opSym = opInfo ? opInfo[1] : `?${opIdx}`;
       stack.push([accText, opSym]);
@@ -78,7 +93,7 @@ export function decompileEntry(data: Uint8Array, start: number, annotate = true)
       accMeta = r.meta;
       pos = r.pos;
     } else {
-      const opIdx = b & 0x1f;
+      const opIdx = opIndexOf(b);
       const opInfo = CONDIT_OPS[opIdx];
       const opSym = opInfo ? opInfo[1] : `?${opIdx}`;
       const rhs = readOperand(data, pos);
@@ -254,7 +269,10 @@ function resolveVar(name: string): number {
 
 function encodeOperand(kind: string, value: string): number[] {
   if (kind === "BYTEVAR") return [0x01, resolveVar(value) & 0xff];
-  if (kind === "WORDVAR") return [0x00, resolveVar(value) & 0xff];
+  // Word vars are encoded with type byte 0x02 in the shipped CONDIT.HSQ
+  // (the reader accepts 0x00 and 0x02-0x7F as "word mode", but the original
+  // assembler emits 0x02 exclusively, so use it for a byte-exact round-trip).
+  if (kind === "WORDVAR") return [0x02, resolveVar(value) & 0xff];
   if (kind === "HEX" || kind === "DEC") {
     const val = parseIntAuto(value);
     if (val <= 0xff) return [0x80, val];
@@ -301,18 +319,18 @@ export function compileExpr(expr: string): Uint8Array {
     while (isOp(peek())) {
       const opTok = consume()!;
       if (opTok.kind === "SEPOP") {
-        const rawOp = parseInt(opTok.value.slice(1), 10);
+        const opIdx = parseInt(opTok.value.slice(1), 10); // ?N => operation index N
         const next = peek();
         if (next && next.kind === "LPAREN") {
-          result.push(0x80 | (rawOp & 0x1f));
+          result.push(0x80 | opByteOf(opIdx));
           consume();
           result.push(...parseExpression());
           consume("RPAREN");
         } else if (isOperand(next)) {
-          result.push(rawOp & 0x1f);
+          result.push(opByteOf(opIdx));
           result.push(...parseAtom());
         } else {
-          result.push(0x80 | (rawOp & 0x1f));
+          result.push(0x80 | opByteOf(opIdx));
           result.push(...parseAtom());
         }
       } else {
@@ -320,12 +338,12 @@ export function compileExpr(expr: string): Uint8Array {
         if (opIdx === undefined) throw new Error(`Unknown operator: '${opTok.value}'`);
         const next = peek();
         if (next && next.kind === "LPAREN") {
-          result.push(0x80 | (opIdx & 0x1f));
+          result.push(0x80 | opByteOf(opIdx));
           consume();
           result.push(...parseExpression());
           consume("RPAREN");
         } else {
-          result.push(opIdx & 0x1f);
+          result.push(opByteOf(opIdx));
           result.push(...parseAtom());
         }
       }

@@ -59,8 +59,15 @@ Type byte → decoding:
 
 Extracted from the jump table at `off_C246` in DNCDPRG.ASM:
 
+`off_C246` is a jump table of **word** pointers, so the control byte is the
+operation index **doubled** — the engine masks it and uses it directly as a
+byte offset into the table. The operation index is therefore
+`(control_byte & 0x1F) >> 1`, and only even op-bytes occur in CONDIT.HSQ.
+(An earlier reading used `byte & 0x1F` directly, which mislabeled most
+operators and left AND/OR showing as `?16`/`?18`.)
+
 ```
-BL & 0x1F → operation index:
+op_index = (control_byte & 0x1F) >> 1   →   operation:
 
   0x00: EQ   dx == ax → 0xFFFF, else 0     (equality)
   0x01: LT   dx < ax  → 0xFFFF, else 0     (unsigned less-than)
@@ -89,8 +96,8 @@ Comparisons return 0xFFFF (true) or 0x0000 (false).
 
 | Range | Meaning |
 |-------|---------|
-| 0x00-0x7F | Inline operation: `op_index = byte & 0x1F`, apply immediately |
-| 0x80-0xFE | Separator: push `(accumulator, byte & 0x1F)` to stack, start new sub-expression |
+| 0x00-0x7F | Inline operation: `op_index = (byte & 0x1F) >> 1`, apply immediately |
+| 0x80-0xFE | Separator: push `(accumulator, op_index = (byte & 0x1F) >> 1)` to stack, start new sub-expression |
 | 0xFF | Terminator: unwind stack, return result |
 
 ### Execution Algorithm
@@ -102,11 +109,11 @@ Comparisons return 0xFFFF (true) or 0x0000 (false).
    a. Read next byte
    b. If byte == 0xFF → break (done)
    c. If byte < 0x80:
-      - op_index = byte & 0x1F
+      - op_index = (byte & 0x1F) >> 1
       - Read operand → AX
       - DX = operation[op_index](DX, AX)
    d. If byte >= 0x80:
-      - deferred_op = byte & 0x1F
+      - deferred_op = (byte & 0x1F) >> 1
       - Push (DX, deferred_op) to stack
       - Read new operand → DX (start sub-expression)
 
@@ -131,18 +138,18 @@ Meaning:   Return TRUE if var_FC is non-zero
 ### Entry 1: GameStage Check with Nested Condition
 ```
 Raw:       01 2A 00 80 01 90 02 10 12 02 12 10 80 10 00 80 00 FF
-Decoded:   (byte[GameStage] == 0x01) ?16 (word[0x10] ?18 word[0x12] ?16 0x10 == 0x00)
+Decoded:   (byte[GameStage] == 0x01) & (word[SietchBitfield1] | word[SietchBitfield2] & 0x10 == 0x00)
 
 Breakdown:
   01 2A          → byte[GameStage] (first operand)
-  00 80 01       → operation 0x00 (EQ), immediate 0x01
+  00 80 01       → op 0x00 → index 0 (EQ), immediate 0x01
                    Result: GameStage == 1 (MetGurney)?
-  90             → separator! Push (result, op 0x10) to stack
-  02 10          → word[DS:0x10] (new sub-expression)
-  12             → operation 0x12 → 0x12 & 0x1F = 0x12... 
-                   (this is actually op + next operand encoding)
-  ...
-  FF             → terminate, unwind stack
+  90             → separator! op 0x90 → index (0x10>>1)=8 (AND); push (result, &)
+  02 10          → word[DS:0x10] = SietchBitfield1 (new sub-expression)
+  12 02 12       → op 0x12 → index 9 (OR), operand word[0x12] = SietchBitfield2
+  10 80 10       → op 0x10 → index 8 (AND), immediate 0x10
+  00 80 00       → op 0x00 → index 0 (EQ), immediate 0x00
+  FF             → terminate, unwind: (GameStage==1) & (SB1 | SB2 & 0x10 == 0)
 ```
 
 ### Entry 27: Two-Variable Expression

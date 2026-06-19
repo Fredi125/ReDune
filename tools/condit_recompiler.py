@@ -16,9 +16,10 @@ Bytecode encoding (DNCDPRG.EXE sub_C266/C1DB/C204):
     80 XX       → immediate byte (0x00-0xFF)
     81+ XXXX    → immediate word (uint16 LE)
 
-  Control bytes:
-    0x00-0x0F   → inline op (op_index = byte & 0x1F), read operand, apply
-    0x80-0x9F   → separator (push acc + deferred_op, start new sub-expr)
+  Control bytes (op_index = (byte & 0x1F) >> 1; off_C246 is a word-pointer
+  jump table, so the control byte is the op index doubled):
+    0x00-0x1E   → inline op, read operand, apply
+    0x80-0x9E   → separator (push acc + deferred_op, start new sub-expr)
     0xFF        → terminator (unwind stack)
 
   Operations (off_C246):
@@ -67,6 +68,17 @@ OP_SYMBOLS['+'] = 0x06
 OP_SYMBOLS['-'] = 0x07
 OP_SYMBOLS['&'] = 0x08
 OP_SYMBOLS['|'] = 0x09
+
+
+def op_byte(idx):
+    """Inline op byte for an operation index.
+
+    off_C246 is a jump table of WORD pointers, so the control byte is the
+    operation index doubled (only even op-bytes occur in CONDIT.HSQ). A
+    separator is 0x80 | op_byte(idx).
+    """
+    return (idx << 1) & 0x7F
+
 
 # Reverse variable name lookup
 VAR_NAMES = {name: offset for offset, name in CONDIT_VARIABLES.items()}
@@ -144,7 +156,10 @@ def encode_operand(kind: str, value: str) -> bytes:
         return bytes([0x01, offset & 0xFF])
     elif kind == 'WORDVAR':
         offset = resolve_var(value)
-        return bytes([0x00, offset & 0xFF])
+        # Word vars are emitted with type byte 0x02 in the shipped CONDIT.HSQ
+        # (the reader accepts 0x00 and 0x02-0x7F; the original assembler uses
+        # 0x02 exclusively, so match it for a byte-exact round-trip).
+        return bytes([0x02, offset & 0xFF])
     elif kind in ('HEX', 'DEC'):
         val = resolve_imm(value)
         if val <= 0xFF:
@@ -226,27 +241,25 @@ def compile_expr(expr: str) -> bytes:
             op_tok = consume()
 
             if op_tok[0] == 'SEPOP':
-                # ?NN from decompiler output — either separator or inline op
-                raw_op = int(op_tok[1][1:])  # strip '?' prefix
+                # ?NN from decompiler output — N is the operation index
+                op_idx = int(op_tok[1][1:])  # strip '?' prefix
 
                 next_tok = peek()
                 if next_tok and next_tok[0] == 'LPAREN':
                     # Separator: push current, start sub-expression
-                    sep_byte = 0x80 | (raw_op & 0x1F)
-                    result.append(sep_byte)
+                    result.append(0x80 | op_byte(op_idx))
                     consume()  # eat '('
                     sub = parse_expression()
                     result.extend(sub)
                     consume('RPAREN')  # eat ')'
                 elif next_tok and is_operand(next_tok):
                     # Inline op with raw index
-                    result.append(raw_op & 0x1F)
+                    result.append(op_byte(op_idx))
                     operand = parse_atom()
                     result.extend(operand)
                 else:
                     # Default to separator
-                    sep_byte = 0x80 | (raw_op & 0x1F)
-                    result.append(sep_byte)
+                    result.append(0x80 | op_byte(op_idx))
                     operand = parse_atom()
                     result.extend(operand)
             else:
@@ -258,15 +271,14 @@ def compile_expr(expr: str) -> bytes:
                 next_tok = peek()
                 if next_tok and next_tok[0] == 'LPAREN':
                     # Sub-expression → use separator
-                    sep_byte = 0x80 | (op_idx & 0x1F)
-                    result.append(sep_byte)
+                    result.append(0x80 | op_byte(op_idx))
                     consume()  # eat '('
                     sub = parse_expression()
                     result.extend(sub)
                     consume('RPAREN')  # eat ')'
                 else:
                     # Inline operation
-                    result.append(op_idx & 0x1F)
+                    result.append(op_byte(op_idx))
                     operand = parse_atom()
                     result.extend(operand)
 

@@ -119,14 +119,14 @@ def decompile_entry(data, start, annotate=True):
             break
         elif b >= 0x80:
             # Separator: push current expression, start new sub-expression
-            op_idx = b & 0x1F
+            op_idx = (b & 0x1F) >> 1
             op_info = CONDIT_OPS.get(op_idx)
             op_sym = op_info[1] if op_info else f"?{op_idx}"
             stack.append((acc_text, op_sym))
             acc_text, pos, acc_meta = read_operand(data, pos)
         else:
             # Inline operation: apply immediately
-            op_idx = b & 0x1F
+            op_idx = (b & 0x1F) >> 1
             op_info = CONDIT_OPS.get(op_idx)
             op_sym = op_info[1] if op_info else f"?{op_idx}"
             rhs_text, pos, rhs_meta = read_operand(data, pos)
