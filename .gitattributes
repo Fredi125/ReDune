@@ -1,0 +1,32 @@
+# Prevent Git from altering binary game data on checkout/commit.
+# Without this, Windows (core.autocrlf=true) rewrites line endings inside
+# these binaries and corrupts them (saves fail to decompress, HSQ breaks).
+
+# All game resources are binary regardless of extension.
+gamedata/** binary
+
+# Binary file types anywhere in the repo.
+*.SAV binary
+*.HSQ binary
+*.HNM binary
+*.BIN binary
+*.SAL binary
+*.LOP binary
+*.DAT binary
+*.AGD binary
+*.M32 binary
+*.VOC binary
+*.png binary
+*.wav binary
+*.ppm binary
+
+# Source code: normalize to LF in the repository.
+*.py   text eol=lf
+*.ts   text eol=lf
+*.tsx  text eol=lf
+*.js   text eol=lf
+*.jsx  text eol=lf
+*.json text eol=lf
+*.css  text eol=lf
+*.html text eol=lf
+*.md   text eol=lf

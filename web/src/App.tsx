@@ -2,7 +2,7 @@ import { useState } from "react";
 import { SpriteViewer } from "./ui/SpriteViewer";
 import { SaveEditor } from "./ui/SaveEditor";
 import { ConditStudio } from "./ui/ConditStudio";
-import { Panel } from "./ui/shared";
+import { ErrorBoundary, Panel } from "./ui/shared";
 
 type Tab = "sprites" | "save" | "condit" | "about";
 
@@ -60,10 +60,12 @@ export function App() {
           </button>
         ))}
       </div>
-      {tab === "sprites" && <SpriteViewer />}
-      {tab === "save" && <SaveEditor />}
-      {tab === "condit" && <ConditStudio />}
-      {tab === "about" && <About />}
+      <ErrorBoundary key={tab}>
+        {tab === "sprites" && <SpriteViewer />}
+        {tab === "save" && <SaveEditor />}
+        {tab === "condit" && <ConditStudio />}
+        {tab === "about" && <About />}
+      </ErrorBoundary>
       <div className="sub" style={{ marginTop: 24, textAlign: "center", color: "var(--dim)" }}>
         Decoded in-browser · codecs ported from the ReDune Python toolkit · no game data is bundled
       </div>

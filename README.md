@@ -156,6 +156,21 @@ into the (git-ignored) assets dir:
 ln -s "$(pwd)/../gamedata" web/public/game
 ```
 
+#### Windows notes
+
+- PowerShell (5.1) doesn't accept `&&` — run commands on separate lines (or use `;`).
+- **Binary files must not be line-ending-converted.** The repo ships a `.gitattributes`
+  that marks game data as binary. If you cloned *before* it existed, your `*.SAV`/`*.HSQ`
+  may be corrupted (a save will fail to decompress). Fix it once:
+  ```powershell
+  git config core.autocrlf false
+  git rm --cached -r . > $null
+  git reset --hard            # re-checks-out all files with correct bytes
+  ```
+  Quick check: `SampleSave.SAV` must be exactly **10218** bytes, `gamedata\CONDIT.HSQ` **5618** bytes.
+- One-click "Load sample" needs assets at `web\public\game\`. Either copy your `gamedata`
+  folder there, or (admin) `mklink /D web\public\game ..\..\gamedata`. Otherwise just use **Choose file…**.
+
 ## Architecture
 
 ```

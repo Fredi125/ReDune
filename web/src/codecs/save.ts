@@ -99,6 +99,16 @@ export class DuneSave {
     this.data = f7Decompress(raw);
     this.compressedSize = raw.length;
     this.decompressedSize = this.data.length;
+    // Highest field we read is contact_distance @0x5594. A real save
+    // decompresses to ~22146 bytes; anything much shorter is corrupt.
+    const MIN = OFF.contact_distance + 1;
+    if (this.data.length < MIN) {
+      throw new Error(
+        `This .SAV decompressed to only ${this.data.length} bytes (a valid save is ~22146). ` +
+          `The file looks corrupted — on Windows this is almost always Git rewriting line endings in binary ` +
+          `files. Fix: 'git config core.autocrlf false', then re-checkout (see the repo .gitattributes / README).`,
+      );
+    }
   }
 
   u8(o: number): number {

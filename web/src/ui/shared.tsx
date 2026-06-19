@@ -1,7 +1,38 @@
 /** Shared UI primitives + helpers. */
-import React, { useRef, useState } from "react";
+import React, { Component, useRef, useState } from "react";
 
-export const hex = (v: number, w = 2) => "0x" + v.toString(16).toUpperCase().padStart(w, "0");
+export const hex = (v: number, w = 2) =>
+  v == null || Number.isNaN(v) ? "0x?" : "0x" + v.toString(16).toUpperCase().padStart(w, "0");
+
+/** Catches render errors in a tool so one bad file can't black-screen the app. */
+export class ErrorBoundary extends Component<{ children: React.ReactNode }, { error: Error | null }> {
+  state: { error: Error | null } = { error: null };
+  static getDerivedStateFromError(error: Error) {
+    return { error };
+  }
+  render() {
+    if (this.state.error) {
+      return (
+        <div className="panel">
+          <div className="panel-b">
+            <div className="warn">
+              <b>Couldn't render this tool.</b>
+            </div>
+            <div className="small mono" style={{ marginTop: 8 }}>
+              {String(this.state.error.message || this.state.error)}
+            </div>
+            <div className="small muted" style={{ marginTop: 8 }}>
+              This usually means the loaded file isn't the expected format or is corrupted. Try a different file, or
+              switch tabs and back to reset. On Windows, binary game files can be corrupted by Git line-ending
+              conversion — see the README.
+            </div>
+          </div>
+        </div>
+      );
+    }
+    return this.props.children;
+  }
+}
 
 export function Panel(props: { title: string; accent?: string; right?: React.ReactNode; children: React.ReactNode }) {
   const accent = props.accent ?? "var(--amber)";
