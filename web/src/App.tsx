@@ -9,9 +9,10 @@ import { AudioStudio } from "./ui/AudioStudio";
 import { StoryStudio } from "./ui/StoryStudio";
 import { FontViewer } from "./ui/FontViewer";
 import { DatStudio } from "./ui/DatStudio";
+import { HnmPlayer } from "./ui/HnmPlayer";
 import { ErrorBoundary, Panel } from "./ui/shared";
 
-type Tab = "sprites" | "rooms" | "map" | "font" | "text" | "audio" | "story" | "save" | "condit" | "archive" | "about";
+type Tab = "sprites" | "rooms" | "map" | "font" | "text" | "audio" | "video" | "story" | "save" | "condit" | "archive" | "about";
 
 const TABS: { id: Tab; label: string }[] = [
   { id: "sprites", label: "◳ Sprites" },
@@ -20,6 +21,7 @@ const TABS: { id: Tab; label: string }[] = [
   { id: "font", label: "Aa Font" },
   { id: "text", label: "✎ Text" },
   { id: "audio", label: "♪ Audio" },
+  { id: "video", label: "▶ Video" },
   { id: "story", label: "✦ Story" },
   { id: "save", label: "⚔ Save editor" },
   { id: "condit", label: "⎔ CONDIT studio" },
@@ -54,6 +56,9 @@ function About() {
           </li>
           <li>
             <b>Audio</b> — decode and play sound effects (<code>SN*.HSQ/.VOC</code>) in-browser; export WAV.
+          </li>
+          <li>
+            <b>Video</b> — decode and play <code>*.HNM</code> cutscenes on canvas (frame stepper + soundtrack); export WAV.
           </li>
           <li>
             <b>Story</b> — cross-reference <code>DIALOGUE.HSQ</code> × <code>CONDIT.HSQ</code> × <code>PHRASE*.HSQ</code>:
@@ -103,6 +108,7 @@ export function App() {
         {tab === "font" && <FontViewer />}
         {tab === "text" && <TextStudio />}
         {tab === "audio" && <AudioStudio />}
+        {tab === "video" && <HnmPlayer />}
         {tab === "story" && <StoryStudio />}
         {tab === "save" && <SaveEditor />}
         {tab === "condit" && <ConditStudio />}

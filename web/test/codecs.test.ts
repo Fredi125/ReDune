@@ -20,6 +20,7 @@ import { loadDialogue } from "../src/codecs/dialogue";
 import { decodeDnchar } from "../src/codecs/font";
 import { parseDat, extractFile, buildDat, rebuildDat } from "../src/codecs/dat";
 import { loadGradientTables } from "../src/codecs/globdata";
+import { HnmFile } from "../src/codecs/hnm";
 import { decodeVoc } from "../src/codecs/voc";
 import { heatmapColor, detectMapWidth } from "../src/codecs/map";
 import { hsqDecompress as hsqDec } from "../src/codecs/compression";
@@ -506,6 +507,41 @@ console.log("\nDUNE.DAT archive:");
     } catch (e) {
       ok("DAT", false, String(e));
     }
+  }
+}
+
+// ---------------------------------------------------------------------------
+// HNM video: per-frame framebuffer checksums must match the Python decoder
+// ---------------------------------------------------------------------------
+console.log("\nHNM video:");
+{
+  const path = ["FORT.HNM", "CRYO2.HNM", "DEAD3.HNM"].map((f) => join(GD, f)).find((p) => existsSync(p));
+  if (!path) skip("HNM", "no .HNM present");
+  else {
+    const h = new HnmFile(read(path));
+    const fb = new Uint8Array(64000);
+    const pal = h.palette.slice();
+    const N = Math.min(h.frameCount, 40);
+    const sums: number[] = [];
+    for (let i = 0; i < N; i++) {
+      h.decodeFrame(i, fb, pal);
+      let s = 0;
+      for (let k = 0; k < fb.length; k++) s += fb[k];
+      sums.push(s);
+    }
+    ok("HNM decodes frames", h.frameCount > 0 && sums.some((s) => s > 0), `${h.frameCount} frames`);
+    if (PY) {
+      try {
+        py(
+          `import json,sys;sys.path.insert(0,'tools')\nfrom hnm_decoder import HnmFile\nh=HnmFile(open(${JSON.stringify(path)},'rb').read())\nfb=bytearray(64000); pal=bytearray(h.palette)\nN=min(h.frame_count,40); s=[]\nfor i in range(N):\n h.decode_frame(i,fb,pal); s.append(sum(fb))\njson.dump({'frames':h.frame_count,'sums':s},open('/tmp/redune_hnm.json','w'))`,
+        );
+        const ref = JSON.parse(readFileSync("/tmp/redune_hnm.json", "utf8"));
+        const match = h.frameCount === ref.frames && sums.length === ref.sums.length && sums.every((s, i) => s === ref.sums[i]);
+        ok("HNM matches Python (framebuffer checksums)", match, `${N} frames checked`);
+      } catch (e) {
+        skip("HNM vs Python", String(e));
+      }
+    } else skip("HNM vs Python", "python3 unavailable");
   }
 }
 
