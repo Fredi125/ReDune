@@ -71,7 +71,8 @@ function About() {
             see every dialogue option, the condition that gates it, and the actual line spoken.
           </li>
           <li>
-            <b>Save editor</b> — load <code>DUNE*.SAV</code>, edit globals / troops / sietches, export a working save.
+            <b>Save editor</b> — load <code>DUNE*.SAV</code>, edit globals / troops / sietches / NPCs / smugglers,
+            export a working save.
           </li>
           <li>
             <b>CONDIT studio</b> — browse &amp; decompile the 713 condition entries, recompile expressions, patch

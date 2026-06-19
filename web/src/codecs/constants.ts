@@ -22,6 +22,30 @@ export const SIETCH_COUNT = 70;
 export const SIETCH_SIZE = 28;
 export const TROOP_COUNT = 68;
 export const TROOP_SIZE = 27;
+export const NPC_COUNT = 16;
+export const NPC_STRIDE = 16;
+export const SMUGGLER_COUNT = 6;
+export const SMUGGLER_STRIDE = 17;
+
+export const NPC_SPRITES: Record<number, string> = {
+  0x00: "Unused/Empty",
+  0x01: "Duke Leto Atreides",
+  0x02: "Jessica Atreides",
+  0x03: "Thufir Hawat",
+  0x04: "Duncan Idaho",
+  0x05: "Gurney Halleck",
+  0x06: "Stilgar",
+  0x07: "Liet Kynes",
+  0x08: "Chani",
+  0x09: "Harah",
+  0x0a: "Baron Vladimir Harkonnen",
+  0x0b: "Feyd-Rautha Harkonnen",
+  0x0c: "Emperor Shaddam IV",
+  0x0d: "Harkonnen Captain",
+  0x0e: "Smuggler",
+  0x0f: "Fremen Chief (type 1)",
+  0x10: "Fremen Chief (type 2)",
+};
 
 export const GAME_STAGES: Record<number, string> = {
   0x00: "Start (intro sequence)",

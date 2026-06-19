@@ -199,9 +199,10 @@ python3 tools/condit_decompiler.py samples/CONDIT.HSQ --chains
 - [ ] True MAP globe projection (via TABLAT) instead of the row-major heatmap
 
 - [x] Sprite re-encoder → `web/src/codecs/sprite.ts encodeSpriteFile` (raw mode, decode-equivalent round-trip) + PNG import in Sprites tab
+- [x] Complete game state editor → NPCs + smugglers added to the web Save editor (offsets verified vs Python)
 
 ### Low Priority
-- [ ] Complete game state editor (NPCs + smugglers in the web UI)
+- [ ] In-browser OPL2/MT-32 synthesis for true HERAD playback (currently MIDI export only)
 
 ## External References
 

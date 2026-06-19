@@ -1,15 +1,17 @@
 import { useRef, useState } from "react";
 import { DuneSave } from "../codecs/save";
-import { EQUIPMENT_FLAGS, GAME_STAGES, SIETCH_STATUS_FLAGS, TROOP_JOBS } from "../codecs/constants";
+import { EQUIPMENT_FLAGS, GAME_STAGES, NPC_SPRITES, SIETCH_STATUS_FLAGS, TROOP_JOBS } from "../codecs/constants";
 import { downloadBytes, hex, LoadBar, NumberField, Panel, Tag } from "./shared";
 
 export function SaveEditor() {
   const savRef = useRef<DuneSave | null>(null);
   const [name, setName] = useState("");
   const [, setVer] = useState(0);
-  const [sub, setSub] = useState<"globals" | "troops" | "sietches">("globals");
+  const [sub, setSub] = useState<"globals" | "troops" | "sietches" | "npcs" | "smugglers">("globals");
   const [troopSel, setTroopSel] = useState(0);
   const [sietchSel, setSietchSel] = useState(0);
+  const [npcSel, setNpcSel] = useState(0);
+  const [smugSel, setSmugSel] = useState(0);
   const [showAllTroops, setShowAllTroops] = useState(false);
 
   const sav = savRef.current;
@@ -43,7 +45,7 @@ export function SaveEditor() {
         <>
           <div className="row">
             <div className="tabs grow" style={{ margin: 0, borderBottom: "none" }}>
-              {(["globals", "troops", "sietches"] as const).map((t) => (
+              {(["globals", "troops", "sietches", "npcs", "smugglers"] as const).map((t) => (
                 <button key={t} className={"tab" + (sub === t ? " active" : "")} onClick={() => setSub(t)}>
                   {t.toUpperCase()}
                 </button>
@@ -238,6 +240,134 @@ export function SaveEditor() {
                             <NumberField label="Orni" value={s.ornithopters} max={255} onChange={(v) => edit((sv) => sv.setSietchField(sietchSel, "ornithopters", v))} style={{ width: 70 }} />
                             <NumberField label="Atom" value={s.atomics} max={255} onChange={(v) => edit((sv) => sv.setSietchField(sietchSel, "atomics", v))} style={{ width: 70 }} />
                             <NumberField label="Gun" value={s.guns} max={255} onChange={(v) => edit((sv) => sv.setSietchField(sietchSel, "guns", v))} style={{ width: 70 }} />
+                          </div>
+                        </div>
+                      </div>
+                    </Panel>
+                  );
+                })()}
+              </div>
+            </div>
+          )}
+
+          {sub === "npcs" && (
+            <div className="row" style={{ alignItems: "flex-start" }}>
+              <div className="grow">
+                <Panel title="NPCs (16)">
+                  <div className="scroll">
+                    <table>
+                      <thead>
+                        <tr>
+                          <th>#</th>
+                          <th>Character</th>
+                          <th>Room</th>
+                          <th>Dialogue</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {sav.allNpcs().map((nx) => (
+                          <tr key={nx.index} className={"clickable" + (nx.index === npcSel ? " sel" : "")} onClick={() => setNpcSel(nx.index)}>
+                            <td className="muted">{nx.index}</td>
+                            <td className="small">{nx.spriteName}</td>
+                            <td className="muted">{nx.roomLocation}</td>
+                            <td className="muted">{nx.forDialogue}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </Panel>
+              </div>
+              <div style={{ width: 300, flexShrink: 0 }}>
+                {(() => {
+                  const nx = sav.npc(npcSel);
+                  return (
+                    <Panel title={`Edit NPC #${npcSel}`} accent="var(--purple)">
+                      <div className="col">
+                        <div className="field">
+                          <label>Character (sprite)</label>
+                          <select value={nx.spriteId} onChange={(e) => edit((s) => s.setNpcByte(npcSel, 0, +e.target.value))}>
+                            {Object.entries(NPC_SPRITES).map(([v, n]) => (
+                              <option key={v} value={v}>{hex(+v)} — {n}</option>
+                            ))}
+                            {!(nx.spriteId in NPC_SPRITES) && <option value={nx.spriteId}>{hex(nx.spriteId)} — (custom)</option>}
+                          </select>
+                        </div>
+                        <div className="row">
+                          <NumberField label="Room" value={nx.roomLocation} max={255} onChange={(v) => edit((s) => s.setNpcByte(npcSel, 2, v))} style={{ width: 88 }} />
+                          <NumberField label="Place type" value={nx.typeOfPlace} max={255} onChange={(v) => edit((s) => s.setNpcByte(npcSel, 3, v))} style={{ width: 88 }} />
+                          <NumberField label="Exact place" value={nx.exactPlace} max={255} onChange={(v) => edit((s) => s.setNpcByte(npcSel, 5, v))} style={{ width: 88 }} />
+                        </div>
+                        <div className="row">
+                          <NumberField label="Dialogue avail" value={nx.dialogueAvailable} max={255} onChange={(v) => edit((s) => s.setNpcByte(npcSel, 4, v))} style={{ width: 120 }} />
+                          <NumberField label="ForDialogue entry" value={nx.forDialogue} max={255} onChange={(v) => edit((s) => s.setNpcByte(npcSel, 6, v))} style={{ width: 140 }} />
+                        </div>
+                        <div className="small muted">ForDialogue indexes DIALOGUE.HSQ — cross-reference it in the Story tab.</div>
+                      </div>
+                    </Panel>
+                  );
+                })()}
+              </div>
+            </div>
+          )}
+
+          {sub === "smugglers" && (
+            <div className="row" style={{ alignItems: "flex-start" }}>
+              <div className="grow">
+                <Panel title="Smugglers (6)">
+                  <table>
+                    <thead>
+                      <tr>
+                        <th>#</th>
+                        <th>Region</th>
+                        <th>Haggle</th>
+                        <th>Stock H/O/K/L/W</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {sav.allSmugglers().map((sg) => (
+                        <tr key={sg.index} className={"clickable" + (sg.index === smugSel ? " sel" : "")} onClick={() => setSmugSel(sg.index)}>
+                          <td className="muted">{sg.index}</td>
+                          <td className="muted">{sg.region}</td>
+                          <td className="muted">{sg.haggle}</td>
+                          <td className="small muted">{sg.harvesters}/{sg.ornithopters}/{sg.krysknives}/{sg.laserguns}/{sg.weirding}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </Panel>
+              </div>
+              <div style={{ width: 300, flexShrink: 0 }}>
+                {(() => {
+                  const sg = sav.smuggler(smugSel);
+                  const field = (label: string, value: number, off: number) => (
+                    <NumberField label={label} value={value} max={255} onChange={(v) => edit((s) => s.setSmugglerByte(smugSel, off, v))} style={{ width: 68 }} />
+                  );
+                  return (
+                    <Panel title={`Edit smuggler #${smugSel}`} accent="var(--green)">
+                      <div className="col">
+                        <div className="row">
+                          {field("Region", sg.region, 0)}
+                          {field("Haggle", sg.haggle, 1)}
+                        </div>
+                        <div className="field">
+                          <label>Stock</label>
+                          <div className="row">
+                            {field("Harv", sg.harvesters, 4)}
+                            {field("Orni", sg.ornithopters, 5)}
+                            {field("Krys", sg.krysknives, 6)}
+                            {field("Laser", sg.laserguns, 7)}
+                            {field("Weird", sg.weirding, 8)}
+                          </div>
+                        </div>
+                        <div className="field">
+                          <label>Prices</label>
+                          <div className="row">
+                            {field("Harv", sg.priceHarvesters, 9)}
+                            {field("Orni", sg.priceOrnithopters, 10)}
+                            {field("Krys", sg.priceKrysknives, 11)}
+                            {field("Laser", sg.priceLaserguns, 12)}
+                            {field("Weird", sg.priceWeirding, 13)}
                           </div>
                         </div>
                       </div>

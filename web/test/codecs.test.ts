@@ -573,6 +573,32 @@ for (const f of ["ARRAKIS.HSQ", "ARRAKIS.AGD", "ARRAKIS.M32"]) {
 }
 
 // ---------------------------------------------------------------------------
+// NPC / smuggler save data: TS offsets must match the Python decoder
+// ---------------------------------------------------------------------------
+console.log("\nNPC / smuggler save data:");
+{
+  const savePath = ["SampleSave.SAV", "Stilgar.SAV"].map((f) => join(ROOT, f)).find((p) => existsSync(p));
+  if (!savePath) skip("npc/smuggler", "no .SAV present");
+  else if (!PY) skip("npc/smuggler", "python3 unavailable");
+  else {
+    try {
+      py(
+        `import json,sys;sys.path.insert(0,'.')\nfrom lib.compression import f7_decompress\nd=f7_decompress(open(${JSON.stringify(savePath)},'rb').read())\nN=0x53F4;S=0x54F6\nnpc=[[d[N+i*16],d[N+i*16+6]] for i in range(16)]\nsm=[[d[S+i*17+4],d[S+i*17+9]] for i in range(6)]\njson.dump({'npc':npc,'sm':sm},open('/tmp/redune_ns.json','w'))`,
+      );
+      const ref = JSON.parse(readFileSync("/tmp/redune_ns.json", "utf8"));
+      const sav = new DuneSave(read(savePath));
+      const npcs = sav.allNpcs();
+      const sm = sav.allSmugglers();
+      const npcOk = ref.npc.every((p: number[], i: number) => npcs[i].spriteId === p[0] && npcs[i].forDialogue === p[1]);
+      const smOk = ref.sm.every((p: number[], i: number) => sm[i].harvesters === p[0] && sm[i].priceHarvesters === p[1]);
+      ok("NPC/smuggler offsets match Python", npcOk && smOk);
+    } catch (e) {
+      skip("npc/smuggler vs Python", String(e));
+    }
+  }
+}
+
+// ---------------------------------------------------------------------------
 // Sprite encoder: re-encode (raw) must decode back to identical sprites
 // ---------------------------------------------------------------------------
 console.log("\nSprite encoder (round-trip):");

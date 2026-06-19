@@ -11,12 +11,44 @@ import {
   SIETCH_SIZE,
   TROOP_COUNT,
   TROOP_SIZE,
+  NPC_COUNT,
+  NPC_STRIDE,
+  SMUGGLER_COUNT,
+  SMUGGLER_STRIDE,
+  NPC_SPRITES,
   GAME_STAGES,
   TROOP_JOBS,
   equipmentStr,
   locationName,
   sietchStatusStr,
 } from "./constants";
+
+export interface NPC {
+  index: number;
+  spriteId: number;
+  spriteName: string;
+  roomLocation: number;
+  typeOfPlace: number;
+  dialogueAvailable: number;
+  exactPlace: number;
+  forDialogue: number;
+}
+
+export interface Smuggler {
+  index: number;
+  region: number;
+  haggle: number;
+  harvesters: number;
+  ornithopters: number;
+  krysknives: number;
+  laserguns: number;
+  weirding: number;
+  priceHarvesters: number;
+  priceOrnithopters: number;
+  priceKrysknives: number;
+  priceLaserguns: number;
+  priceWeirding: number;
+}
 
 export interface Troop {
   index: number;
@@ -234,6 +266,60 @@ export class DuneSave {
     if (!f) return false;
     this.w8(this.sietchOffset(idx) + f[0], value);
     return true;
+  }
+
+  // --- NPCs (0x53F4, 16 × 16 bytes) ---
+  npcOffset(idx: number) { return OFF.npc_data + idx * NPC_STRIDE; }
+
+  npc(idx: number): NPC {
+    const o = this.npcOffset(idx);
+    const d = this.data;
+    return {
+      index: idx,
+      spriteId: d[o],
+      spriteName: NPC_SPRITES[d[o]] ?? `0x${d[o].toString(16).toUpperCase().padStart(2, "0")}`,
+      roomLocation: d[o + 2],
+      typeOfPlace: d[o + 3],
+      dialogueAvailable: d[o + 4],
+      exactPlace: d[o + 5],
+      forDialogue: d[o + 6],
+    };
+  }
+  allNpcs(): NPC[] {
+    return Array.from({ length: NPC_COUNT }, (_, i) => this.npc(i));
+  }
+  /** field offsets within an NPC record: spriteId 0, roomLocation 2, typeOfPlace 3, dialogueAvailable 4, exactPlace 5, forDialogue 6 */
+  setNpcByte(idx: number, fieldOffset: number, value: number) {
+    this.w8(this.npcOffset(idx) + fieldOffset, value);
+  }
+
+  // --- Smugglers (0x54F6, 6 × 17 bytes) ---
+  smugglerOffset(idx: number) { return OFF.smuggler_data + idx * SMUGGLER_STRIDE; }
+
+  smuggler(idx: number): Smuggler {
+    const o = this.smugglerOffset(idx);
+    const d = this.data;
+    return {
+      index: idx,
+      region: d[o],
+      haggle: d[o + 1],
+      harvesters: d[o + 4],
+      ornithopters: d[o + 5],
+      krysknives: d[o + 6],
+      laserguns: d[o + 7],
+      weirding: d[o + 8],
+      priceHarvesters: d[o + 9],
+      priceOrnithopters: d[o + 10],
+      priceKrysknives: d[o + 11],
+      priceLaserguns: d[o + 12],
+      priceWeirding: d[o + 13],
+    };
+  }
+  allSmugglers(): Smuggler[] {
+    return Array.from({ length: SMUGGLER_COUNT }, (_, i) => this.smuggler(i));
+  }
+  setSmugglerByte(idx: number, fieldOffset: number, value: number) {
+    this.w8(this.smugglerOffset(idx) + fieldOffset, value);
   }
 
   /** Re-compress the (possibly edited) buffer back to a .SAV byte array. */
