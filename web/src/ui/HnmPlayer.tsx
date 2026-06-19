@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { framebufToRGBA, HnmFile } from "../codecs/hnm";
 import { vocToWav } from "../codecs/voc";
 import { downloadBytes, LoadBar, Panel } from "./shared";
+import { useIncoming } from "./routing";
 
 export function HnmPlayer() {
   const fileRef = useRef<HnmFile | null>(null);
@@ -117,6 +118,7 @@ export function HnmPlayer() {
   };
 
   useEffect(() => () => stopAudio(), []);
+  useIncoming("video", load);
 
   const hasSound = fileRef.current ? fileRef.current.extractSound().length > 0 : false;
 

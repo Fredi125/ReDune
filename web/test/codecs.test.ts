@@ -26,6 +26,7 @@ import { loadHerad } from "../src/codecs/herad";
 import { decodeVoc, encodeVoc, vocToWav, wavToSamples } from "../src/codecs/voc";
 import { heatmapColor, detectMapWidth } from "../src/codecs/map";
 import { hsqDecompress as hsqDec } from "../src/codecs/compression";
+import { detectAssetType } from "../src/ui/detect";
 
 const here = dirname(fileURLToPath(import.meta.url));
 const ROOT = resolve(here, "..", "..");
@@ -673,6 +674,55 @@ console.log("\nSprite encoder (round-trip):");
       if (a.width !== b.width || a.height !== b.height || a.paletteOffset !== b.paletteOffset || !eq(a.pixels, b.pixels)) okAll = false;
     }
     ok("sprite re-encode decodes identically", okAll, `${sf.count} sprites`);
+  }
+}
+
+// ---------------------------------------------------------------------------
+console.log("\nAsset auto-detect (routing):");
+{
+  // Name/extension routing (content-independent — uses a dummy buffer).
+  const dummy = new Uint8Array([0, 0, 0, 0]);
+  const nameCases: [string, string][] = [
+    ["DUNE37S1.SAV", "save"],
+    ["PALACE.SAL", "rooms"],
+    ["CRYO2.HNM", "video"],
+    ["DUNE.DAT", "archive"],
+    ["ARRAKIS.AGD", "music"],
+    ["ARRAKIS.M32", "music"],
+    ["ARRAKIS.HSQ", "music"],
+    ["DNCHAR.BIN", "font"],
+    ["TABLAT.BIN", "map"],
+    ["MAP.HSQ", "map"],
+    ["GLOBDATA.HSQ", "map"],
+    ["CONDIT.HSQ", "condit"],
+    ["DIALOGUE.HSQ", "story"],
+    ["PHRASE11.HSQ", "text"],
+    ["COMMAND1.HSQ", "text"],
+    ["SN1.HSQ", "audio"],
+  ];
+  let nameOk = true;
+  for (const [n, want] of nameCases) {
+    const got = detectAssetType(n, dummy);
+    if (got !== want) {
+      nameOk = false;
+      console.error(`    ${n}: got ${got}, want ${want}`);
+    }
+  }
+  ok("auto-detect name routing", nameOk, `${nameCases.length} cases`);
+
+  // Content-sniffed routing for files whose name gives no hint (real game files).
+  const contentCases: [string, string][] = [
+    ["CHAN.HSQ", "sprites"],
+    ["BARO.HSQ", "sprites"],
+    ["PERS.HSQ", "sprites"],
+  ];
+  for (const [n, want] of contentCases) {
+    const p = join(GD, n);
+    if (!existsSync(p)) {
+      skip(`auto-detect ${n}`, "file missing");
+      continue;
+    }
+    ok(`auto-detect ${n} (content) -> ${want}`, detectAssetType(n, read(p)) === want);
   }
 }
 

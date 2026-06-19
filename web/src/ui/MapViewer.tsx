@@ -3,6 +3,7 @@ import { decodeMap, heatmapColor, MAP_WIDTHS, renderMapRGBA } from "../codecs/ma
 import { loadGlobe, type GlobeScanline } from "../codecs/globdata";
 import { parseTablat, tablatScaleCurve } from "../codecs/tablat";
 import { LoadBar, Panel } from "./shared";
+import { useIncoming } from "./routing";
 
 const GLOBE_R = 95;
 const GLOBE_SZ = 2 * GLOBE_R + 10;
@@ -53,6 +54,14 @@ export function MapViewer() {
       setError(String(e));
     }
   };
+
+  // Auto-detect routes MAP / GLOBDATA / TABLAT here; pick the right loader by name.
+  useIncoming("map", (n, b) => {
+    const u = n.toUpperCase();
+    if (u.includes("GLOBDATA")) loadGlobeFile(n, b);
+    else if (u.includes("TABLAT")) loadTablat(n, b);
+    else loadMap(n, b);
+  });
 
   // flat heatmap
   useEffect(() => {

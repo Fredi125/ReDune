@@ -2,6 +2,7 @@ import { useRef, useState } from "react";
 import { DuneSave } from "../codecs/save";
 import { EQUIPMENT_FLAGS, GAME_STAGES, NPC_SPRITES, SIETCH_STATUS_FLAGS, TROOP_JOBS } from "../codecs/constants";
 import { downloadBytes, hex, LoadBar, NumberField, Panel, Tag } from "./shared";
+import { useIncoming } from "./routing";
 
 export function SaveEditor() {
   const savRef = useRef<DuneSave | null>(null);
@@ -31,6 +32,8 @@ export function SaveEditor() {
       alert("Could not parse save: " + e);
     }
   };
+
+  useIncoming("save", load);
 
   return (
     <div className="col">

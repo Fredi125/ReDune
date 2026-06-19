@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { decodeDnchar, encodeDnchar, FONT_HEIGHT, glyphPixel, setGlyphPixel, type Glyph } from "../codecs/font";
 import { downloadBytes, LoadBar, NumberField, Panel } from "./shared";
+import { useIncoming } from "./routing";
 
 function Atlas({ glyphs, scale, color, sel, onPick, rev }: { glyphs: Glyph[]; scale: number; color: string; sel: number; onPick: (i: number) => void; rev: number }) {
   const ref = useRef<HTMLCanvasElement>(null);
@@ -94,22 +95,26 @@ export function FontViewer() {
 
   const glyphs = glyphsRef.current;
 
+  const load = (n: string, b: Uint8Array) => {
+    try {
+      glyphsRef.current = decodeDnchar(b);
+      rawRef.current = b;
+      setName(n);
+      bump();
+    } catch (e) {
+      alert("Not a font: " + e);
+    }
+  };
+
+  useIncoming("font", load);
+
   return (
     <div className="col">
       <LoadBar
         accept=".BIN,.bin"
         sampleName="DNCHAR.BIN"
         hint="Load DNCHAR.BIN (or DNCHAR2.BIN) — the bitmap font. Click a glyph to edit its pixels, then export."
-        onLoad={(n, b) => {
-          try {
-            glyphsRef.current = decodeDnchar(b);
-            rawRef.current = b;
-            setName(n);
-            bump();
-          } catch (e) {
-            alert("Not a font: " + e);
-          }
-        }}
+        onLoad={load}
       />
 
       {glyphs && (

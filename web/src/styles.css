@@ -113,6 +113,17 @@ tr.clickable:hover { background: #ffffff08; cursor: pointer; }
 }
 .dropzone.over { border-color: var(--amber); background: #e8a8380a; }
 
+.drop-overlay {
+  position: fixed; inset: 0; z-index: 1000; pointer-events: none;
+  display: flex; align-items: center; justify-content: center;
+  background: #000000aa; backdrop-filter: blur(2px);
+}
+.drop-overlay-inner {
+  border: 2px dashed var(--amber); border-radius: 12px; padding: 28px 40px;
+  color: var(--amber); font-size: 18px; background: #1a160ecc;
+  box-shadow: 0 0 40px #e8a83833;
+}
+
 .hexbox { font-size: 12px; color: var(--blue); word-break: break-all; line-height: 1.6; background: var(--panel-hi); padding: 8px; border-radius: 4px; border: 1px solid var(--border); }
 .codearea { width: 100%; min-height: 60px; resize: vertical; }
 .ok { color: var(--green); }

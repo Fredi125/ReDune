@@ -4,6 +4,7 @@ import { decodeSprite, loadSpriteFile, spriteToRGBA, type RGB, type SpriteFile }
 import { loadGradientTables, type GradTable } from "../codecs/globdata";
 import { recommendedDecoration } from "../codecs/constants";
 import { downloadBytes, hex, LoadBar, NumberField, Panel, Tag } from "./shared";
+import { useIncoming } from "./routing";
 
 /** Pre-render every sprite of the decoration sheet to its own canvas (alpha-keyed). */
 function buildSpriteCanvases(sf: SpriteFile): (HTMLCanvasElement | null)[] {
@@ -185,6 +186,8 @@ export function RoomStudio() {
       alert("Not GLOBDATA.HSQ: " + e);
     }
   };
+
+  useIncoming("rooms", loadSalFile);
 
   const section = sal && sel < sal.sections.length ? sal.sections[sel] : null;
   const tip = salName ? recommendedDecoration(salName) : undefined;

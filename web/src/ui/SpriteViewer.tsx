@@ -12,6 +12,7 @@ import {
   type SpriteFile,
 } from "../codecs/sprite";
 import { downloadBytes, hex, LoadBar, Panel, Tag } from "./shared";
+import { useIncoming } from "./routing";
 
 /** Draw an image file into a w×h RGBA buffer (scaled to fit). */
 function imageFileToRGBA(file: File, w: number, h: number): Promise<Uint8ClampedArray> {
@@ -154,6 +155,8 @@ export function SpriteViewer() {
     const decompressed = encodeSpriteFile({ paletteBytes: file.paletteBytes, hasExtra: file.hasExtra, sprites });
     downloadBytes(`${name}.HSQ`, hsqCompress(decompressed));
   };
+
+  useIncoming("sprites", load);
 
   const paletteEntries = useMemo(() => (file ? [...file.palette.entries()].sort((a, b) => a[0] - b[0]) : []), [file]);
   const editedCount = replacedRef.current.size;

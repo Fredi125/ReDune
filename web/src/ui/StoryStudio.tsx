@@ -3,6 +3,7 @@ import { exportDialogueHsq, loadDialogue, refreshRecord, type DialogueFile, type
 import { conditionExpr, loadCondit, type ConditFile } from "../codecs/condit";
 import { displayText, loadTextTable, type TextTable } from "../codecs/text";
 import { downloadBytes, hex, LoadBar, NumberField, Panel, Tag } from "./shared";
+import { useIncoming } from "./routing";
 
 export function StoryStudio() {
   const [dlg, setDlg] = useState<DialogueFile | null>(null);
@@ -24,6 +25,20 @@ export function StoryStudio() {
     return e ? displayText(e.raw) : `<phrase ${hex(idx, 3)} missing>`;
   };
   const condExpr = (idx: number): string | null => (cf ? conditionExpr(cf, idx) : null);
+
+  // Auto-detect sends DIALOGUE here; also accept a CONDIT/PHRASE drop by name.
+  useIncoming("story", (n, b) => {
+    const u = n.toUpperCase();
+    try {
+      if (u.includes("CONDIT")) setCf(loadCondit(b));
+      else if (u.includes("PHRASE")) {
+        setPhr(loadTextTable(b));
+        setPhrName(n);
+      } else setDlg(loadDialogue(b));
+    } catch (e) {
+      alert("Couldn't load into Story: " + e);
+    }
+  });
 
   const nonEmpty = useMemo(() => (dlg ? dlg.entries.filter((e) => e.records.length > 0) : []), [dlg]);
 

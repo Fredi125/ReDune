@@ -2,6 +2,7 @@ import { useMemo, useRef, useState } from "react";
 import { entryIsHsq, extractFile, parseDat, rebuildDat, type DatFile } from "../codecs/dat";
 import { hsqDecompress } from "../codecs/compression";
 import { downloadBytes, hex, LoadBar, Panel, Tag } from "./shared";
+import { useIncoming } from "./routing";
 
 export function DatStudio() {
   const [dat, setDat] = useState<DatFile | null>(null);
@@ -25,6 +26,8 @@ export function DatStudio() {
       setError(String(e));
     }
   };
+
+  useIncoming("archive", load);
 
   const filtered = useMemo(() => {
     if (!dat) return [];

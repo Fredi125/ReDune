@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { SpriteViewer } from "./ui/SpriteViewer";
 import { SaveEditor } from "./ui/SaveEditor";
 import { ConditStudio } from "./ui/ConditStudio";
@@ -12,6 +12,8 @@ import { DatStudio } from "./ui/DatStudio";
 import { HnmPlayer } from "./ui/HnmPlayer";
 import { HeradStudio } from "./ui/HeradStudio";
 import { ErrorBoundary, Panel } from "./ui/shared";
+import { RoutedProvider, type IncomingFile } from "./ui/routing";
+import { detectAssetType, TAB_LABELS } from "./ui/detect";
 
 type Tab = "sprites" | "rooms" | "map" | "font" | "text" | "audio" | "music" | "video" | "story" | "save" | "condit" | "archive" | "about";
 
@@ -92,9 +94,10 @@ function About() {
           </li>
         </ul>
         <p className="small muted">
-          Tip: to load files with one click, symlink or copy your extracted game files into <code>web/public/game/</code>{" "}
-          (git-ignored). Otherwise use “Choose file…”. Run the Python <code>tools/extract_all.py</code> to bulk-export
-          assets to PNG/WAV/JSON.
+          Tip: use <b>“Open file…”</b> at the top (or just <b>drag a file anywhere</b> onto the window) and ReDune picks
+          the right tab automatically. To load the bundled samples with one click, run <code>npm run dev</code> from a
+          repo clone (it serves <code>gamedata/</code>); otherwise use “Choose file…”. Run the Python{" "}
+          <code>tools/extract_all.py</code> to bulk-export assets to PNG/WAV/JSON.
         </p>
       </Panel>
     </div>
@@ -103,37 +106,107 @@ function About() {
 
 export function App() {
   const [tab, setTab] = useState<Tab>("sprites");
+  const [pending, setPending] = useState<IncomingFile | null>(null);
+  const [dragging, setDragging] = useState(false);
+  const [notice, setNotice] = useState("");
+  const openInput = useRef<HTMLInputElement>(null);
+  const dragDepth = useRef(0);
+
+  /** Route a file to its tab by auto-detecting its format. */
+  const openFile = (name: string, bytes: Uint8Array) => {
+    const dest = detectAssetType(name, bytes);
+    if (!dest) {
+      setNotice(`Couldn't auto-detect a format for "${name}" — pick a tab and load it there.`);
+      return;
+    }
+    setPending({ tab: dest, name, bytes });
+    setTab(dest);
+    setNotice(`Opened ${name} → ${TAB_LABELS[dest]}`);
+  };
+
+  const readAndOpen = (f: File) => {
+    const r = new FileReader();
+    r.onload = () => openFile(f.name, new Uint8Array(r.result as ArrayBuffer));
+    r.readAsArrayBuffer(f);
+  };
+
   return (
-    <div className="app">
-      <div className="row" style={{ alignItems: "baseline" }}>
-        <h1 className="h1">REDUNE</h1>
-        <span className="sub">Dune 1992 — Asset Studio · viewer · editor · recompiler</span>
-      </div>
-      <div className="tabs">
-        {TABS.map((t) => (
-          <button key={t.id} className={"tab" + (tab === t.id ? " active" : "")} onClick={() => setTab(t.id)}>
-            {t.label}
+    <RoutedProvider value={{ pending, clear: () => setPending(null) }}>
+      <div
+        className="app"
+        onDragEnter={(e) => {
+          if (e.dataTransfer?.types?.includes("Files")) {
+            dragDepth.current++;
+            setDragging(true);
+          }
+        }}
+        onDragOver={(e) => {
+          if (e.dataTransfer?.types?.includes("Files")) e.preventDefault();
+        }}
+        onDragLeave={() => {
+          dragDepth.current = Math.max(0, dragDepth.current - 1);
+          if (dragDepth.current === 0) setDragging(false);
+        }}
+        onDrop={(e) => {
+          e.preventDefault();
+          dragDepth.current = 0;
+          setDragging(false);
+          if (e.dataTransfer.files[0]) readAndOpen(e.dataTransfer.files[0]);
+        }}
+      >
+        <div className="row" style={{ alignItems: "baseline" }}>
+          <h1 className="h1">REDUNE</h1>
+          <span className="sub">Dune 1992 — Asset Studio · viewer · editor · recompiler</span>
+          <span className="grow" />
+          <button className="btn primary" onClick={() => openInput.current?.click()} title="Open any game file; the right tab is chosen automatically">
+            ₕ Open file…
           </button>
-        ))}
+          <input
+            ref={openInput}
+            type="file"
+            style={{ display: "none" }}
+            onChange={(e) => {
+              if (e.target.files?.[0]) readAndOpen(e.target.files[0]);
+              e.target.value = "";
+            }}
+          />
+        </div>
+        {notice && (
+          <div className="small muted" style={{ marginTop: 4 }}>
+            {notice}
+          </div>
+        )}
+        <div className="tabs">
+          {TABS.map((t) => (
+            <button key={t.id} className={"tab" + (tab === t.id ? " active" : "")} onClick={() => setTab(t.id)}>
+              {t.label}
+            </button>
+          ))}
+        </div>
+        <ErrorBoundary key={tab}>
+          {tab === "sprites" && <SpriteViewer />}
+          {tab === "rooms" && <RoomStudio />}
+          {tab === "map" && <MapViewer />}
+          {tab === "font" && <FontViewer />}
+          {tab === "text" && <TextStudio />}
+          {tab === "audio" && <AudioStudio />}
+          {tab === "music" && <HeradStudio />}
+          {tab === "video" && <HnmPlayer />}
+          {tab === "story" && <StoryStudio />}
+          {tab === "save" && <SaveEditor />}
+          {tab === "condit" && <ConditStudio />}
+          {tab === "archive" && <DatStudio />}
+          {tab === "about" && <About />}
+        </ErrorBoundary>
+        <div className="sub" style={{ marginTop: 24, textAlign: "center", color: "var(--dim)" }}>
+          Decoded in-browser · codecs ported from the ReDune Python toolkit · no game data is bundled
+        </div>
+        {dragging && (
+          <div className="drop-overlay">
+            <div className="drop-overlay-inner">Drop a Dune file — the right tab opens automatically</div>
+          </div>
+        )}
       </div>
-      <ErrorBoundary key={tab}>
-        {tab === "sprites" && <SpriteViewer />}
-        {tab === "rooms" && <RoomStudio />}
-        {tab === "map" && <MapViewer />}
-        {tab === "font" && <FontViewer />}
-        {tab === "text" && <TextStudio />}
-        {tab === "audio" && <AudioStudio />}
-        {tab === "music" && <HeradStudio />}
-        {tab === "video" && <HnmPlayer />}
-        {tab === "story" && <StoryStudio />}
-        {tab === "save" && <SaveEditor />}
-        {tab === "condit" && <ConditStudio />}
-        {tab === "archive" && <DatStudio />}
-        {tab === "about" && <About />}
-      </ErrorBoundary>
-      <div className="sub" style={{ marginTop: 24, textAlign: "center", color: "var(--dim)" }}>
-        Decoded in-browser · codecs ported from the ReDune Python toolkit · no game data is bundled
-      </div>
-    </div>
+    </RoutedProvider>
   );
 }

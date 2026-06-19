@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { loadHerad, parseTrackEvents, type HeradInstrument, type HeradLoad } from "../codecs/herad";
 import { midiToFreq, oplWaves, playFmNote } from "../audio/heradFm";
 import { downloadBytes, LoadBar, Panel, Tag } from "./shared";
+import { useIncoming } from "./routing";
 
 const FMT_LABEL: Record<string, string> = { OPL2: "OPL2 / AdLib", AGD: "Tandy / PCjr", M32: "Roland MT-32" };
 const TPQ = 120;
@@ -104,6 +105,7 @@ export function HeradStudio() {
   };
 
   useEffect(() => () => stop(), []);
+  useIncoming("music", load);
 
   return (
     <div className="col">

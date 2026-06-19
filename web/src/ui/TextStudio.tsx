@@ -1,6 +1,7 @@
 import { useMemo, useRef, useState } from "react";
 import { editableToBytes, exportTextHsq, loadTextTable, type TextTable } from "../codecs/text";
 import { downloadBytes, LoadBar, Panel } from "./shared";
+import { useIncoming } from "./routing";
 
 export function TextStudio() {
   const tblRef = useRef<TextTable | null>(null);
@@ -20,6 +21,8 @@ export function TextStudio() {
       alert("Not a PHRASE/COMMAND string table: " + e);
     }
   };
+
+  useIncoming("text", load);
 
   const tbl = tblRef.current;
   const filtered = useMemo(() => {

@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { decodeVoc, encodeVoc, encodeVocHsq, vocToWav, wavToSamples, type VocResult } from "../codecs/voc";
 import { downloadBytes, LoadBar, Panel } from "./shared";
+import { useIncoming } from "./routing";
 
 function Waveform({ v }: { v: VocResult }) {
   const ref = useRef<HTMLCanvasElement>(null);
@@ -107,6 +108,7 @@ export function AudioStudio() {
   };
 
   useEffect(() => () => stop(), []);
+  useIncoming("audio", load);
 
   return (
     <div className="col">

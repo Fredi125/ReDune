@@ -3,6 +3,7 @@ import { hsqCompress } from "../codecs/compression";
 import { bytesToHex, compileExpr, conditEntries, loadCondit, type ConditEntry, type ConditFile } from "../codecs/condit";
 import { countSprites, looksLikeSprite } from "../codecs/sprite";
 import { downloadBytes, hex, LoadBar, Panel, Tag } from "./shared";
+import { useIncoming } from "./routing";
 
 function compileSafe(expr: string): { bytes?: Uint8Array; error?: string } {
   try {
@@ -36,6 +37,8 @@ export function ConditStudio() {
       alert("Could not parse CONDIT: " + e);
     }
   };
+
+  useIncoming("condit", load);
 
   const entries = useMemo<ConditEntry[]>(() => (cf ? conditEntries(cf, true).filter((e) => !e.empty) : []), [cf]);
 
