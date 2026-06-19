@@ -19,6 +19,7 @@ import { loadTextTable, encodeTextTable, exportTextHsq, bytesToEditable, editabl
 import { loadDialogue } from "../src/codecs/dialogue";
 import { decodeDnchar } from "../src/codecs/font";
 import { parseDat, extractFile, buildDat, rebuildDat } from "../src/codecs/dat";
+import { loadGradientTables } from "../src/codecs/globdata";
 import { decodeVoc } from "../src/codecs/voc";
 import { heatmapColor, detectMapWidth } from "../src/codecs/map";
 import { hsqDecompress as hsqDec } from "../src/codecs/compression";
@@ -437,6 +438,34 @@ console.log("\nMAP heatmap:");
       skip("map vs Python", String(e));
     }
   } else skip("map vs Python", "python3 unavailable");
+}
+
+// ---------------------------------------------------------------------------
+// GLOBDATA gradient tables (SAL polygon shading) — match the Python parser
+// ---------------------------------------------------------------------------
+console.log("\nGLOBDATA gradient tables:");
+{
+  const path = join(GD, "GLOBDATA.HSQ");
+  if (!existsSync(path)) skip("globdata", "GLOBDATA.HSQ missing");
+  else {
+    const tables = loadGradientTables(read(path));
+    ok("gradient tables parse", tables.length === 55, `${tables.length} tables`);
+    if (PY) {
+      try {
+        py(
+          `import json,sys;sys.path.insert(0,'tools')\nfrom globdata_decoder import parse_gradient_tables\nfrom compression import hsq_decompress\nraw=open(${JSON.stringify(path)},'rb').read()\nd=hsq_decompress(raw) if (sum(raw[:6])&0xFF)==0xAB else raw\nt,_=parse_gradient_tables(d)\nr=[x for x in t if x['length']>0]\njson.dump([x['values'] for x in r],open('/tmp/redune_grad.json','w'))`,
+        );
+        const ref: number[][] = JSON.parse(readFileSync("/tmp/redune_grad.json", "utf8"));
+        let mism = 0;
+        for (let i = 0; i < Math.min(ref.length, tables.length); i++) {
+          if (tables[i].values.join(",") !== ref[i].join(",")) mism++;
+        }
+        ok("gradient tables match Python", mism === 0 && ref.length === tables.length, `${mism} mismatch`);
+      } catch (e) {
+        skip("globdata vs Python", String(e));
+      }
+    } else skip("globdata vs Python", "python3 unavailable");
+  }
 }
 
 // ---------------------------------------------------------------------------

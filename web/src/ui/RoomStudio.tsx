@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { encodeSal, loadSal, sectionCounts, type SalFile, type SalSection } from "../codecs/sal";
 import { decodeSprite, loadSpriteFile, spriteToRGBA, type RGB, type SpriteFile } from "../codecs/sprite";
+import { loadGradientTables, type GradTable } from "../codecs/globdata";
 import { recommendedDecoration } from "../codecs/constants";
 import { downloadBytes, hex, LoadBar, NumberField, Panel, Tag } from "./shared";
 
@@ -39,6 +40,7 @@ function RoomCanvas(props: {
   section: SalSection;
   sprites: (HTMLCanvasElement | null)[] | null;
   palette: Map<number, RGB> | null;
+  gradTables: GradTable[] | null;
   scale: number;
   show: { sprites: boolean; polys: boolean; rects: boolean };
   bg: string;
@@ -71,25 +73,52 @@ function RoomCanvas(props: {
         const y = Math.min(cmd.y1, cmd.y2);
         ctx.fillRect(x, y, Math.abs(cmd.x2 - cmd.x1), Math.abs(cmd.y2 - cmd.y1));
       } else if (cmd.type === "polygon" && props.show.polys) {
-        const pts: [number, number][] = [[cmd.initX, cmd.initY], ...cmd.verticesPass1];
-        if (pts.length > 1) {
-          ctx.beginPath();
-          ctx.moveTo(pts[0][0], pts[0][1]);
-          for (let i = 1; i < pts.length; i++) ctx.lineTo(pts[i][0], pts[i][1]);
-          ctx.closePath();
-          const rgb = palRgb(cmd.polySubtype, `${(cmd.polySubtype * 9) % 256},${(cmd.polySubtype * 5) % 256},150`);
-          ctx.fillStyle = `rgba(${rgb},0.30)`;
-          ctx.fill();
-          ctx.strokeStyle = `rgba(${rgb},0.9)`;
-          ctx.lineWidth = 1;
-          ctx.stroke();
+        // Close the shape: init + pass1 (down one edge) + pass2 reversed (up the other).
+        const pts: [number, number][] = [[cmd.initX, cmd.initY], ...cmd.verticesPass1, ...[...cmd.verticesPass2].reverse()];
+        if (pts.length >= 3) {
+          let yTop = Infinity;
+          let yBot = -Infinity;
+          for (const p of pts) {
+            if (p[1] < yTop) yTop = p[1];
+            if (p[1] > yBot) yBot = p[1];
+          }
+          const path = new Path2D();
+          path.moveTo(pts[0][0], pts[0][1]);
+          for (let k = 1; k < pts.length; k++) path.lineTo(pts[k][0], pts[k][1]);
+          path.closePath();
+          const table = props.gradTables && (cmd.polySubtype & 0x7f) < props.gradTables.length ? props.gradTables[cmd.polySubtype & 0x7f] : null;
+          const span = Math.max(1, yBot - yTop);
+          ctx.save();
+          ctx.clip(path);
+          // Fill scanline-by-scanline with the vertical gradient (authentic when
+          // GLOBDATA + the room palette are loaded; approximated otherwise).
+          for (let y = Math.max(0, yTop); y <= Math.min(H - 1, yBot); y++) {
+            let col: string;
+            if (table) {
+              const idx = table.values[Math.min(y - yTop, table.length - 1)] ?? 0;
+              const rgb = props.palette?.get(idx);
+              col = rgb ? `rgb(${rgb[0]},${rgb[1]},${rgb[2]})` : `rgb(${idx},${idx},${idx})`;
+            } else {
+              const t = (y - yTop) / span;
+              const base = props.palette?.get(cmd.polySubtype & 0x3f);
+              if (base) {
+                const f = 0.55 + 0.45 * t;
+                col = `rgb(${(base[0] * f) | 0},${(base[1] * f) | 0},${(base[2] * f) | 0})`;
+              } else {
+                col = `hsl(${(cmd.polySubtype * 7) % 360} 45% ${(18 + t * 34).toFixed(1)}%)`;
+              }
+            }
+            ctx.fillStyle = col;
+            ctx.fillRect(0, y, W, 1);
+          }
+          ctx.restore();
         }
       } else if (cmd.type === "sprite" && props.show.sprites && props.sprites) {
         const sc = props.sprites[cmd.spriteIndex];
         if (sc) ctx.drawImage(sc, cmd.x, cmd.y);
       }
     }
-  }, [props.section, props.sprites, props.palette, props.show, props.bg, props.rev]);
+  }, [props.section, props.sprites, props.palette, props.gradTables, props.show, props.bg, props.rev]);
 
   return (
     <canvas
@@ -115,6 +144,8 @@ export function RoomStudio() {
   const [sprites, setSprites] = useState<(HTMLCanvasElement | null)[] | null>(null);
   const [palette, setPalette] = useState<Map<number, RGB> | null>(null);
   const [spriteCount, setSpriteCount] = useState(0);
+  const [gradTables, setGradTables] = useState<GradTable[] | null>(null);
+  const [gradName, setGradName] = useState("");
 
   const [scale, setScale] = useState(2);
   const [show, setShow] = useState({ sprites: true, polys: true, rects: true });
@@ -142,6 +173,16 @@ export function RoomStudio() {
       bump();
     } catch (e) {
       alert("Not a sprite sheet: " + e);
+    }
+  };
+
+  const loadGrad = (n: string, bytes: Uint8Array) => {
+    try {
+      setGradTables(loadGradientTables(bytes));
+      setGradName(n);
+      bump();
+    } catch (e) {
+      alert("Not GLOBDATA.HSQ: " + e);
     }
   };
 
@@ -191,6 +232,12 @@ export function RoomStudio() {
             hint={tip ? `Load ${tip} to render this room's art (or any sprite sheet).` : "Load the matching decoration sprite sheet."}
             onLoad={loadDeco}
           />
+          <LoadBar
+            accept=".HSQ,.hsq"
+            sampleName="GLOBDATA.HSQ"
+            hint={gradTables ? `${gradName} loaded ✓ — polygons shaded with real gradient ramps.` : "Optional: load GLOBDATA.HSQ for authentic polygon gradient shading."}
+            onLoad={loadGrad}
+          />
 
           <div className="row" style={{ alignItems: "flex-start" }}>
             {/* sections */}
@@ -235,14 +282,12 @@ export function RoomStudio() {
                 }
               >
                 {section && (
-                  <RoomCanvas section={section} sprites={sprites} palette={palette} scale={scale} show={show} bg={bg} rev={rev.current} />
+                  <RoomCanvas section={section} sprites={sprites} palette={palette} gradTables={gradTables} scale={scale} show={show} bg={bg} rev={rev.current} />
                 )}
-                {!sprites && (
-                  <div className="small muted" style={{ marginTop: 8 }}>
-                    Load a decoration sheet above to render the room's art. Polygons/rects are drawn as a geometry preview
-                    (exact shading isn't reproduced yet); sprite layers are exact.
-                  </div>
-                )}
+                <div className="small muted" style={{ marginTop: 8 }}>
+                  Load a decoration sheet to render sprite art. With GLOBDATA.HSQ + the decoration sheet, polygons are
+                  filled with their real vertical gradient ramps (subtype → gradient table → room palette).
+                </div>
               </Panel>
             </div>
 

@@ -145,8 +145,11 @@ npm run build      # production bundle in web/dist/
 ```
 
 - **Sprites** — decode any sprite `*.HSQ` (palette + RLE/raw bipixels) to canvas, export PNG.
-- **Rooms** — decode `*.SAL` room layouts, composite them with their decoration sprites on a
-  canvas, edit/add/move sprite placements, and re-export a **byte-identical** `.SAL`.
+- **Rooms** — decode `*.SAL` room layouts, composite them with their decoration sprites and
+  GLOBDATA gradient-shaded polygons on a canvas, edit/add/move sprite placements, and re-export a
+  **byte-identical** `.SAL`.
+- **Archive** — open `DUNE.DAT`, extract/decompress files, replace them with your edited assets,
+  and rebuild a working `DUNE.DAT` — the full mod loop, in-browser.
 - **Map** — render `MAP.HSQ` world terrain as a heatmap.
 - **Font** — view the `DNCHAR.BIN` bitmap font (glyph atlas + live text preview).
 - **Text** — view/edit `PHRASE*.HSQ` dialogue and `COMMAND*.HSQ` UI strings (translations/mods),
