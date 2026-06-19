@@ -163,12 +163,9 @@ npm run build      # production bundle in web/dist/
 - **CONDIT studio** — browse & decompile the 713 condition entries, recompile expressions,
   patch in-place and re-export `CONDIT.HSQ` (warns if a non-CONDIT file is loaded).
 
-To enable the one-click "Load sample" buttons during dev, symlink your game files
-into the (git-ignored) assets dir:
-
-```bash
-ln -s "$(pwd)/../gamedata" web/public/game
-```
+The one-click **"Load sample"** buttons work out of the box under `npm run dev`: the dev
+server serves the repo's `gamedata/` at `/game/<name>` (no symlink needed). You can also
+load any file by hand with **Choose file…**.
 
 #### Windows notes
 
@@ -182,8 +179,8 @@ ln -s "$(pwd)/../gamedata" web/public/game
   git reset --hard            # re-checks-out all files with correct bytes
   ```
   Quick check: `SampleSave.SAV` must be exactly **10218** bytes, `gamedata\CONDIT.HSQ` **5618** bytes.
-- One-click "Load sample" needs assets at `web\public\game\`. Either copy your `gamedata`
-  folder there, or (admin) `mklink /D web\public\game ..\..\gamedata`. Otherwise just use **Choose file…**.
+- The "Load sample" buttons work under `npm run dev` with no extra setup (the dev server
+  serves `gamedata/`). You can always load files by hand with **Choose file…**.
 
 ## Architecture
 

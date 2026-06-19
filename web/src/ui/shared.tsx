@@ -109,14 +109,23 @@ export function downloadBytes(filename: string, bytes: Uint8Array) {
 }
 
 /**
- * Try to fetch a game file from the dev assets dir (web/public/game/<name>).
- * Returns null if not available (the primary path is user file upload).
+ * Try to fetch a game file served at /game/<name> (the Vite dev server serves
+ * these straight from the repo's gamedata/). Returns null if unavailable —
+ * including the case where the dev server hands back the SPA fallback HTML
+ * instead of a real file, so callers never decode HTML/empty data as a game asset.
  */
 export async function fetchGame(name: string): Promise<Uint8Array | null> {
   try {
     const res = await fetch(`game/${name}`);
     if (!res.ok) return null;
-    return new Uint8Array(await res.arrayBuffer());
+    const ct = (res.headers.get("content-type") || "").toLowerCase();
+    if (ct.includes("text/html")) return null; // SPA fallback, not a real file
+    const bytes = new Uint8Array(await res.arrayBuffer());
+    if (bytes.length === 0) return null;
+    // Sniff for an HTML document that slipped through without a text/html type.
+    const head = String.fromCharCode(...bytes.slice(0, 15)).toLowerCase();
+    if (head.startsWith("<!doctype") || head.startsWith("<html")) return null;
+    return bytes;
   } catch {
     return null;
   }
@@ -179,7 +188,7 @@ export function LoadBar(props: {
               props.onLoad(props.sampleName!, b);
               setStatus(`Loaded sample ${props.sampleName} (${b.length.toLocaleString()} B)`);
             } else {
-              setStatus(`Sample not found — symlink your gamedata into web/public/game/`);
+              setStatus(`Sample unavailable here — run "npm run dev" from a repo clone (it serves gamedata), or use Choose file…`);
             }
           }}
         >
