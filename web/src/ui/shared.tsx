@@ -147,9 +147,19 @@ export function LoadBar(props: {
 
   const handleFile = (f: File) => {
     const r = new FileReader();
+    r.onerror = () => setStatus(`Couldn't read ${f.name} (${r.error?.message || "read error"})`);
     r.onload = () => {
-      props.onLoad(f.name, new Uint8Array(r.result as ArrayBuffer));
-      setStatus(`Loaded ${f.name} (${(r.result as ArrayBuffer).byteLength.toLocaleString()} B)`);
+      const buf = r.result as ArrayBuffer | null;
+      if (!buf || buf.byteLength === 0) {
+        setStatus(`${f.name} is empty — nothing to load.`);
+        return;
+      }
+      try {
+        props.onLoad(f.name, new Uint8Array(buf));
+        setStatus(`Loaded ${f.name} (${buf.byteLength.toLocaleString()} B)`);
+      } catch (e) {
+        setStatus(`Couldn't load ${f.name}: ${e}`);
+      }
     };
     r.readAsArrayBuffer(f);
   };

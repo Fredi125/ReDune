@@ -114,7 +114,12 @@ export function App() {
 
   /** Route a file to its tab by auto-detecting its format. */
   const openFile = (name: string, bytes: Uint8Array) => {
-    const dest = detectAssetType(name, bytes);
+    let dest = null;
+    try {
+      dest = detectAssetType(name, bytes);
+    } catch {
+      dest = null;
+    }
     if (!dest) {
       setNotice(`Couldn't auto-detect a format for "${name}" — pick a tab and load it there.`);
       return;
@@ -126,22 +131,32 @@ export function App() {
 
   const readAndOpen = (f: File) => {
     const r = new FileReader();
-    r.onload = () => openFile(f.name, new Uint8Array(r.result as ArrayBuffer));
+    r.onerror = () => setNotice(`Couldn't read ${f.name} (${r.error?.message || "read error"})`);
+    r.onload = () => {
+      const buf = r.result as ArrayBuffer | null;
+      if (!buf || buf.byteLength === 0) {
+        setNotice(`${f.name} is empty — nothing to open.`);
+        return;
+      }
+      openFile(f.name, new Uint8Array(buf));
+    };
     r.readAsArrayBuffer(f);
   };
+
+  const hasFiles = (dt: DataTransfer | null) => !!dt && Array.from(dt.types || []).includes("Files");
 
   return (
     <RoutedProvider value={{ pending, clear: () => setPending(null) }}>
       <div
         className="app"
         onDragEnter={(e) => {
-          if (e.dataTransfer?.types?.includes("Files")) {
+          if (hasFiles(e.dataTransfer)) {
             dragDepth.current++;
             setDragging(true);
           }
         }}
         onDragOver={(e) => {
-          if (e.dataTransfer?.types?.includes("Files")) e.preventDefault();
+          if (hasFiles(e.dataTransfer)) e.preventDefault();
         }}
         onDragLeave={() => {
           dragDepth.current = Math.max(0, dragDepth.current - 1);

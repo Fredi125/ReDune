@@ -60,7 +60,7 @@ export function detectAssetType(name: string, bytes: Uint8Array): TabId | null {
   if (e === "DAT") return "archive";
   if (e === "AGD" || e === "M32" || e === "MID") return "music";
   if (e === "BIN") {
-    if (s.startsWith("TABLAT")) return "map";
+    if (s.startsWith("TABLAT") || s.startsWith("GLOBDATA")) return "map";
     return "font"; // DNCHAR* and any other .BIN default to the font viewer
   }
 
