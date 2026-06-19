@@ -14,6 +14,7 @@ import { hsqDecompress, hsqCompress, f7Decompress, f7Compress } from "../src/cod
 import { loadCondit, conditEntries, compileExpr, bytesToHex } from "../src/codecs/condit";
 import { DuneSave } from "../src/codecs/save";
 import { loadSpriteFile, decodeSprite, looksLikeSprite } from "../src/codecs/sprite";
+import { loadSal, encodeSal } from "../src/codecs/sal";
 import { hsqDecompress as hsqDec } from "../src/codecs/compression";
 
 const here = dirname(fileURLToPath(import.meta.url));
@@ -262,6 +263,22 @@ console.log("\nSprite decoding:");
       skip("sprite vs Python", "python3 unavailable");
     }
   }
+}
+
+// ---------------------------------------------------------------------------
+// SAL room layout: decode -> encode must be byte-identical (all 4 files)
+// ---------------------------------------------------------------------------
+console.log("\nSAL room layouts:");
+for (const f of ["SIET.SAL", "PALACE.SAL", "VILG.SAL", "HARK.SAL"]) {
+  const path = join(GD, f);
+  if (!existsSync(path)) {
+    skip(`SAL ${f}`, "file missing");
+    continue;
+  }
+  const orig = read(path);
+  const sal = loadSal(orig);
+  const re = encodeSal(sal.sections);
+  ok(`SAL ${f} byte-identical round-trip`, eq(orig, re), `${sal.sectionCount} sections, ${orig.length}B`);
 }
 
 // ---------------------------------------------------------------------------
