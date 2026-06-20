@@ -209,6 +209,10 @@ python3 tools/condit_decompiler.py samples/CONDIT.HSQ --chains
   dialogue option shows AVAILABLE/blocked live as the real condition VM evaluates
   it against the state. Verified: all 713 entries evaluate; intro-only lines
   (`GameStage == 0x00`) gate off and late-game lines (`>u 0x2F`) unlock.
+- [x] Play tab → **scene player**: shared `ui/RoomCanvas.tsx` (extracted from Rooms)
+  renders a SAL room backdrop (+ decoration sheet + GLOBDATA gradients); a save's
+  NPC roster (`allNpcs`) is clickable → opens each NPC's `forDialogue` entry
+  (verified 15/16 sample NPCs map to non-empty entries; the 16th is the 0xFF "none").
 
 - [x] Palette colour-cycling → `web/src/codecs/palette.ts` (`detectCycleRanges`
   finds smooth contiguous ramps; `rotatePalette` rotates them) + animated
