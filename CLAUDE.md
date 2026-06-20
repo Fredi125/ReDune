@@ -242,6 +242,11 @@ python3 tools/condit_decompiler.py samples/CONDIT.HSQ --chains
 - [x] FREQ.HSQ identified — not a data table but a ~1.27 s **silent** 8-bit /
   22 222 Hz VOC calibration buffer ("Sample test to calc freq" + 28 224 × 0x80).
   No decoder needed; documented so it's not mistaken for game audio.
+- [x] `gamedata/AAAAAAAAAAA` characterised — a 5.84 MB **non-asset** blob:
+  placeholder name, NOT in the 262-file catalog, no HSQ/VOC magic, entropy 7.29,
+  noise-like (zero-crossing 0.47), no real strings, matches no asset
+  concatenation. A capture/scratch artifact bundled in "First Asset commit",
+  not a known game format — safe to ignore for the editor (kept for provenance).
 
 - [x] HERAD OPL2/AGD event parser verified against adplug's CheradPlayer
   (herad.cpp): adplug's current model does **not** fit Cryo's files (recovers
