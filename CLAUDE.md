@@ -38,6 +38,7 @@ dune1992-re/
 │   ├── sound_decoder.py     ← VOC sound effect decoder (+ WAV export)
 │   ├── dat_decoder.py       ← DUNE.DAT archive decoder & repacker (extract/repack/replace)
 │   ├── globdata_decoder.py  ← GLOBDATA.HSQ decoder (gradients + globe projection)
+│   ├── driver_decoder.py    ← DN*.HSQ sound-driver disassembler (OPL2 register map, ports, jump table)
 │   ├── file_index.py        ← Game file catalog (262 files, 18 categories)
 │   └── hsq_decompress.py   ← HSQ file decompressor
 ├── ui/                 ← Original single-file React save explorer (snapshot)
@@ -49,6 +50,7 @@ dune1992-re/
 ├── docs/               ← Technical documentation
 │   ├── save_format.md      ← Complete save file map
 │   ├── condit_vm.md        ← CONDIT VM architecture
+│   ├── adlib_driver.md     ← DN* sound drivers + OPL2 register map (from DNADL disasm)
 │   └── file_formats.md     ← Game resource formats (HSQ, SAL, HNM, etc.)
 └── samples/            ← Example data files (not game files)
 ```
@@ -238,6 +240,14 @@ python3 tools/condit_decompiler.py samples/CONDIT.HSQ --chains
 - [x] In-browser HERAD playback → Music tab plays decoded note events via a WebAudio synth
 - [x] HERAD OPL2 instrument-patch format decoded (`parseInstruments`, 40-byte records; verified) + 2-op WebAudio FM synth driven by the real patches (`web/src/audio/heradFm.ts`)
 - [x] TABLAT.BIN globe latitude table decoded (`web/src/codecs/tablat.ts`, verified vs Python); its `scale` column = 199·cos(lat) confirms the sphere geometry and drives the globe foreshortening
+
+- [x] Sound-driver disassembly → `tools/driver_decoder.py` + `docs/adlib_driver.md`:
+  the `DN*.HSQ` drivers are HSQ-compressed 8086 with a common 7-entry jump-table
+  ABI. Extracted the **exact OPL2 register map** from DNADL (ground truth, not
+  adplug): write routine @0xA35 (port 0x388/0x389 + delay loops, reg=AL/val=AH),
+  operator-slot tables @0x71/0x7A, instrument groups 0x20/0x40/0x60/0x80/0xE0+slot
+  & 0xC0+ch (@0x958), and the 12-note F-number table @0x47 → 0xA0/0xB0. The fnum
+  table is equal-tempered (≤~8 cents), confirming `heradFm.ts` tuning is correct.
 
 ### Low Priority (blocked on disassembly we don't have)
 - [ ] Cycle-exact YM3812 (OPL2) emulator for bit-perfect HERAD timbre (current FM synth is a faithful 2-op approximation)
