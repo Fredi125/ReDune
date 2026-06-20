@@ -216,6 +216,46 @@ export function decodeSprite(data: Uint8Array, spriteIdx: number): Sprite {
   return { width, height, paletteOffset: palOffset, compressed: compression, pixels };
 }
 
+export interface SpriteAnim {
+  start: number; // first sprite index
+  count: number; // number of frames
+  width: number;
+  height: number;
+  paletteOffset: number;
+}
+
+/**
+ * Recover candidate animation sequences from a sprite sheet: maximal runs of
+ * consecutive sprites that share width×height×paletteOffset (≥ `minFrames`).
+ * The engine's exact frame groupings/timing live in DNCDPRG.EXE; this is a
+ * structural heuristic (like palette-cycle detection) — e.g. it finds the
+ * 17-frame talking run in CHAN and leaves single-portrait sheets (PERS) empty.
+ */
+export function detectAnimations(file: SpriteFile, minFrames = 2): SpriteAnim[] {
+  const dims: { w: number; h: number; p: number }[] = [];
+  for (let i = 0; i < file.count; i++) {
+    try {
+      const s = decodeSprite(file.data, i);
+      dims.push({ w: s.width, h: s.height, p: s.paletteOffset });
+    } catch {
+      dims.push({ w: 0, h: 0, p: 0 });
+    }
+  }
+  const out: SpriteAnim[] = [];
+  let st = 0;
+  for (let i = 1; i <= dims.length; i++) {
+    const same = i < dims.length && dims[i].w === dims[st].w && dims[i].h === dims[st].h && dims[i].p === dims[st].p;
+    if (!same) {
+      const count = i - st;
+      if (count >= minFrames && dims[st].w > 0 && dims[st].h > 0) {
+        out.push({ start: st, count, width: dims[st].w, height: dims[st].h, paletteOffset: dims[st].p });
+      }
+      st = i;
+    }
+  }
+  return out;
+}
+
 export interface EncSprite {
   width: number;
   height: number;

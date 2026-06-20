@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { hsqCompress } from "../codecs/compression";
 import {
   decodeSprite,
+  detectAnimations,
   encodeSpriteFile,
   loadSpriteFile,
   quantizeToSprite,
@@ -188,6 +189,39 @@ export function SpriteViewer() {
     for (const r of activeRanges) for (let i = r.start; i <= r.end; i++) s.add(i);
     return s;
   }, [activeRanges]);
+
+  // Candidate animation sequences (consecutive same-size frames).
+  const anims = useMemo(() => (file ? detectAnimations(file) : []), [file]);
+  const [selAnim, setSelAnim] = useState(0);
+  const [animFps, setAnimFps] = useState(8);
+  const [animPlaying, setAnimPlaying] = useState(false);
+  const [animFrame, setAnimFrame] = useState(0);
+  const animRef = useRef<HTMLCanvasElement>(null);
+  useEffect(() => {
+    setSelAnim(0);
+    setAnimFrame(0);
+    setAnimPlaying(false);
+  }, [file]);
+  useEffect(() => {
+    const a = anims[selAnim];
+    if (!animPlaying || !a) return;
+    const id = setInterval(() => setAnimFrame((f) => (f + 1) % a.count), Math.max(30, 1000 / Math.max(1, animFps)));
+    return () => clearInterval(id);
+  }, [animPlaying, selAnim, animFps, anims]);
+  useEffect(() => {
+    const a = anims[selAnim];
+    const c = animRef.current;
+    if (!a || !c || !file) return;
+    const s = spritesRef.current[a.start + (animFrame % a.count)];
+    if (!s || s.width === 0) return;
+    c.width = a.width;
+    c.height = a.height;
+    const ctx = c.getContext("2d");
+    if (!ctx) return;
+    const img = ctx.createImageData(a.width, a.height);
+    img.data.set(spriteToRGBA(s, livePalette, opaque));
+    ctx.putImageData(img, 0, 0);
+  }, [anims, selAnim, animFrame, livePalette, opaque, file]);
   const editedCount = replacedRef.current.size;
 
   return (
@@ -251,6 +285,22 @@ export function SpriteViewer() {
                 </label>
               ))}
               <span className="muted">(heuristic ranges; exact engine ranges live in the EXE)</span>
+            </div>
+          )}
+          {anims.length > 0 && (
+            <div className="row small" style={{ gap: 10, marginBottom: 10, alignItems: "center", flexWrap: "wrap" }}>
+              <b>Animations:</b>
+              <select value={selAnim} onChange={(e) => { setSelAnim(+e.target.value); setAnimFrame(0); }}>
+                {anims.map((a, i) => (
+                  <option key={i} value={i}>#{i}: sprites {a.start}–{a.start + a.count - 1} ({a.count}f, {a.width}×{a.height})</option>
+                ))}
+              </select>
+              <button className="btn small" onClick={() => setAnimPlaying((p) => !p)}>{animPlaying ? "■ stop" : "▶ play"}</button>
+              <label className="muted">fps</label>
+              <input type="range" min={1} max={24} value={animFps} onChange={(e) => setAnimFps(+e.target.value)} />
+              {anims[selAnim] && <span className="muted">frame {(animFrame % anims[selAnim].count) + 1}/{anims[selAnim].count}</span>}
+              <canvas ref={animRef} className="pixel" style={{ width: (anims[selAnim]?.width ?? 0) * 2, height: (anims[selAnim]?.height ?? 0) * 2, imageRendering: "pixelated", border: "1px solid var(--border)", background: "#101018" }} />
+              <span className="muted">(heuristic frame groups; exact sequences/timing live in the EXE)</span>
             </div>
           )}
           <div className="small muted" style={{ marginBottom: 8 }}>

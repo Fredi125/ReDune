@@ -236,6 +236,13 @@ python3 tools/condit_decompiler.py samples/CONDIT.HSQ --chains
   NPC roster (`allNpcs`) is clickable → opens each NPC's `forDialogue` entry
   (verified 15/16 sample NPCs map to non-empty entries; the 16th is the 0xFF "none").
 
+- [x] Sprite **animation metadata** (heuristic) → `detectAnimations`
+  (`web/src/codecs/sprite.ts`): groups consecutive same-size frames into
+  candidate sequences (CHAN → a 17-frame run; PERS → none, distinct portraits)
+  + a live looping preview in the Sprites tab (group picker, fps, palette-cycle
+  aware). Exact engine frame sequences/timing live in DNCDPRG.EXE; this recovers
+  plausible candidates from the sheet structure.
+
 - [x] Palette colour-cycling → `web/src/codecs/palette.ts` (`detectCycleRanges`
   finds smooth contiguous ramps; `rotatePalette` rotates them) + animated
   shimmer preview in the Sprites tab (toggle, per-ramp checkboxes, speed). The

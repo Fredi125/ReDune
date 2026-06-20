@@ -13,7 +13,7 @@ import { dirname, resolve, join } from "node:path";
 import { hsqDecompress, hsqCompress, f7Decompress, f7Compress, isHsq } from "../src/codecs/compression";
 import { loadCondit, conditEntries, compileExpr, bytesToHex } from "../src/codecs/condit";
 import { DuneSave } from "../src/codecs/save";
-import { loadSpriteFile, decodeSprite, looksLikeSprite, encodeSpriteFile, spriteBody } from "../src/codecs/sprite";
+import { loadSpriteFile, decodeSprite, looksLikeSprite, encodeSpriteFile, spriteBody, detectAnimations } from "../src/codecs/sprite";
 import { loadSal, encodeSal } from "../src/codecs/sal";
 import { loadTextTable, encodeTextTable, exportTextHsq, bytesToEditable, editableToBytes } from "../src/codecs/text";
 import { loadDialogue, encodeDialogue } from "../src/codecs/dialogue";
@@ -817,6 +817,17 @@ console.log("\nSprite encoder (round-trip):");
     for (let i = 0; i < sf.count; i++) verb.push({ width: 0, height: 0, paletteOffset: 0, pixels: new Uint8Array(0), raw: spriteBody(sf, i) });
     const exact = encodeSpriteFile({ paletteBytes: sf.paletteBytes, hasExtra: sf.hasExtra, sprites: verb });
     ok("sprite re-encode byte-identical (verbatim)", eq(exact, sf.data), `${sf.data.length}B, ${sf.count} sprites`);
+  }
+
+  // Animation detection: consecutive same-size frame runs are valid & in-bounds.
+  const cpath = ["CHAN.HSQ", "STIL.HSQ", "FEYD.HSQ"].map((f) => join(GD, f)).find((p) => existsSync(p));
+  if (cpath) {
+    const sf = loadSpriteFile(read(cpath));
+    const anims = detectAnimations(sf);
+    const valid = anims.every((a) => a.count >= 2 && a.start >= 0 && a.start + a.count <= sf.count && a.width > 0 && a.height > 0);
+    ok("detectAnimations finds in-bounds runs", anims.length > 0 && valid, `${anims.length} runs, longest ${Math.max(0, ...anims.map((a) => a.count))}f`);
+  } else {
+    skip("detectAnimations", "no character sheet present");
   }
 }
 
