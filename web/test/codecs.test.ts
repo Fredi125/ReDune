@@ -22,7 +22,7 @@ import { parseDat, extractFile, buildDat, rebuildDat } from "../src/codecs/dat";
 import { loadGradientTables, loadGlobe } from "../src/codecs/globdata";
 import { parseTablat } from "../src/codecs/tablat";
 import { HnmFile } from "../src/codecs/hnm";
-import { loadHerad } from "../src/codecs/herad";
+import { loadHerad, parseTrackEvents } from "../src/codecs/herad";
 import { decodeVoc, encodeVoc, vocToWav, wavToSamples } from "../src/codecs/voc";
 import { heatmapColor, detectMapWidth } from "../src/codecs/map";
 import { hsqDecompress as hsqDec } from "../src/codecs/compression";
@@ -628,6 +628,28 @@ for (const f of ["ARRAKIS.HSQ", "ARRAKIS.AGD", "ARRAKIS.M32"]) {
       skip(`HERAD ${f} vs Python`, String(e));
     }
   } else skip(`HERAD ${f} vs Python`, "python3 unavailable");
+}
+
+// OPL2/AGD event-parse regression guard: NOTE_ON/NOTE_OFF must stay balanced
+// (~equal) and substantial. This locks Cryo's restricted status set in place —
+// adopting adplug's current dispatch collapses these to a handful of notes
+// (verified: ~1.5k of ~24k, 20 tracks killed). See is_status_byte_opl2.
+for (const f of ["ARRAKIS.HSQ", "ARRAKIS.AGD"]) {
+  const path = join(GD, f);
+  if (!existsSync(path)) {
+    skip(`HERAD ${f} note balance`, "file missing");
+    continue;
+  }
+  const L = loadHerad(read(path), f);
+  let on = 0;
+  let off = 0;
+  for (const t of L.info.tracks)
+    for (const e of parseTrackEvents(t.data, L.info.format)) {
+      if (e.type === "NOTE_ON") on++;
+      else if (e.type === "NOTE_OFF") off++;
+    }
+  const balanced = on >= off && on - off <= L.info.tracks.length && on > 1000;
+  ok(`HERAD ${f} note on/off balanced`, balanced, `on=${on} off=${off} tracks=${L.info.tracks.length}`);
 }
 
 // ---------------------------------------------------------------------------

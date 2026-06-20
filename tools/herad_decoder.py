@@ -230,7 +230,17 @@ def read_vlq(data: bytes, pos: int) -> tuple:
 
 
 def is_status_byte_opl2(b: int) -> bool:
-    """Check if byte is an OPL2 HERAD status byte (HSQ/AGD format)."""
+    """Check if byte is an OPL2 HERAD status byte (HSQ/AGD format).
+
+    Cryo's HERAD revision uses this RESTRICTED status set, with 0xD0 carrying
+    two data bytes. Verified against adplug's CheradPlayer (herad.cpp) and found
+    to DIVERGE: adplug's model (dispatch on status & 0xF0; 0xD0 = 1-byte
+    aftertouch; 0xE0 = 1-byte pitch-bend; unknown status ends the track)
+    recovers only ~1.5k of the ~24k notes in Dune's decompressed tracks and
+    kills ~20 tracks outright (both v1 and v2). This set yields perfectly
+    balanced note-on/off, so Dune predates that adplug revision -- do not adopt
+    the adplug dispatch here.
+    """
     return b in (0x80, 0x90, 0xC0, 0xD0, 0xFF)
 
 

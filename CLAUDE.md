@@ -200,6 +200,14 @@ python3 tools/condit_decompiler.py samples/CONDIT.HSQ --chains
 - [ ] In-browser OPL2/MT-32 synthesis for true HERAD playback (currently MIDI export only)
 - [ ] True MAP globe projection (via TABLAT) instead of the row-major heatmap
 
+- [x] HERAD OPL2/AGD event parser verified against adplug's CheradPlayer
+  (herad.cpp): adplug's current model does **not** fit Cryo's files (recovers
+  ~1.5k of ~24k notes, kills ~20 tracks), so Dune predates that revision. The
+  restricted status set `{0x80,0x90,0xC0,0xD0,0xFF}` with 0xD0 as a 2-byte event
+  is correct here (perfectly balanced note on/off). Documented in `herad.ts` /
+  `tools/herad_decoder.py`; locked with a note-balance regression test. No code
+  change warranted — adopting the adplug dispatch would regress.
+
 - [x] CONDIT recompiler roundtrip 63.7% → **100% (713/713)**: op-byte is the
   word-pointer jump-table offset, so `op_index = (byte & 0x1F) >> 1` (was read as
   `byte & 0x1F`, mislabeling operators and leaving AND/OR as `?16`/`?18`); word

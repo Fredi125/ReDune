@@ -102,6 +102,15 @@ type Event = { delta: number; type: string; data: number[] };
 export function parseTrackEvents(track: Uint8Array, fmt: HeradFmt): Event[] {
   const events: Event[] = [];
   let pos = 0;
+  // OPL2/AGD uses the RESTRICTED status set Cryo's HERAD revision actually emits:
+  // {0x80,0x90,0xC0,0xD0,0xFF}, where 0xD0 carries TWO data bytes. Verified
+  // against adplug's CheradPlayer (herad.cpp) and found to DIVERGE: adplug's
+  // current model (dispatch on status&0xF0; 0xD0=1-byte aftertouch; 0xE0=1-byte
+  // pitch-bend; unknown status ends the track) recovers only ~1.5k of the ~24k
+  // notes in Dune's decompressed tracks and kills ~20 tracks outright, for both
+  // v1 and v2 note-off lengths. The set below yields perfectly balanced
+  // NOTE_ON/NOTE_OFF (see the HERAD note-balance test), so Dune predates that
+  // adplug revision — do NOT "modernise" this to the adplug dispatch.
   const isStatus = fmt === FMT_M32 ? (b: number) => b >= 0x80 : (b: number) => b === 0x80 || b === 0x90 || b === 0xc0 || b === 0xd0 || b === 0xff;
 
   while (pos < track.length) {
