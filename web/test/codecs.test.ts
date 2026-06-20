@@ -24,7 +24,7 @@ import { parseTablat } from "../src/codecs/tablat";
 import { HnmFile } from "../src/codecs/hnm";
 import { loadHerad, parseTrackEvents } from "../src/codecs/herad";
 import { decodeVoc, encodeVoc, vocToWav, wavToSamples } from "../src/codecs/voc";
-import { heatmapColor, detectMapWidth } from "../src/codecs/map";
+import { heatmapColor, detectMapWidth, planetColor } from "../src/codecs/map";
 import { hsqDecompress as hsqDec } from "../src/codecs/compression";
 import { detectAssetType } from "../src/ui/detect";
 import { detectCycleRanges, rotatePalette } from "../src/codecs/palette";
@@ -442,6 +442,17 @@ console.log("\nMAP heatmap:");
     return r[0] === c[0] && r[1] === c[1] && r[2] === c[2];
   });
   ok("map heatmap gradient anchors", good);
+
+  // Globe desert palette: valid RGB across the range, hits its control stops,
+  // and is non-degenerate (sand brighter than shadowed rock).
+  {
+    const allValid = Array.from({ length: 256 }, (_, v) => planetColor(v)).every((c) => c.every((ch) => ch >= 0 && ch <= 255));
+    const lo = planetColor(0);
+    const sand = planetColor(128);
+    const stopsOk = lo[0] === 45 && lo[1] === 30 && lo[2] === 20 && sand[0] === 196 && sand[1] === 146 && sand[2] === 84;
+    const brighter = sand[0] + sand[1] + sand[2] > lo[0] + lo[1] + lo[2];
+    ok("globe planetColor valid + hits control stops", allValid && stopsOk && brighter);
+  }
   if (PY) {
     try {
       py(

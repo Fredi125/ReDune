@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { decodeMap, heatmapColor, MAP_WIDTHS, renderMapRGBA } from "../codecs/map";
+import { decodeMap, detectMapWidth, MAP_WIDTHS, planetColor, renderMapRGBA } from "../codecs/map";
 import { loadGlobe, type GlobeScanline } from "../codecs/globdata";
 import { parseTablat, tablatScaleCurve } from "../codecs/tablat";
 import { LoadBar, Panel } from "./shared";
@@ -78,7 +78,9 @@ export function MapViewer() {
     ctx.putImageData(id, 0, 0);
   }, [mode, mapData, width]);
 
-  // globe sphere (experimental projection from the GLOBDATA latitude blocks)
+  // globe sphere: the GLOBDATA longitude ramps + TABLAT foreshortening give the
+  // geometry; when MAP.HSQ is loaded we wrap the *real* world terrain onto it
+  // (desert palette), otherwise we fall back to the GLOBDATA latitude bytes.
   useEffect(() => {
     if (mode !== "globe") return;
     const c = globeRef.current;
@@ -93,6 +95,11 @@ export function MapViewer() {
     const R = GLOBE_R;
     const nLat = globe.length;
     const maxScale = scaleCurve ? Math.max(...scaleCurve) : 0;
+    const rampMaxAll = Math.max(1, ...globe.map((b) => b.rampMax));
+    // Real-terrain source (optional): wrap MAP.HSQ around the sphere.
+    const mapW = mapData ? detectMapWidth(mapData.length) : 0;
+    const mapH = mapData ? Math.floor(mapData.length / mapW) : 0;
+    const rotCols = mapW ? Math.round((rot / 100) * mapW) : 0;
     for (let py = 0; py < GLOBE_SZ; py++) {
       const dy = py - cy;
       if (Math.abs(dy) > R) continue;
@@ -103,6 +110,7 @@ export function MapViewer() {
       const blk = globe[b];
       const tlen = blk.terrain.length;
       if (tlen === 0) continue;
+      const mapRow = mapData ? Math.min(mapH - 1, Math.max(0, Math.round((0.5 - latNorm * 0.5) * (mapH - 1)))) : 0;
       // Foreshortening width: from the real TABLAT scale curve if loaded, else geometric cos.
       let halfW = R * cosLat;
       if (scaleCurve && maxScale > 0) {
@@ -115,9 +123,17 @@ export function MapViewer() {
         const p = (dx / halfW + 1) / 2; // 0..1 across visible arc
         const rampIdx = Math.min(blk.ramp.length - 1, Math.max(0, Math.round(p * (blk.ramp.length - 1))));
         const lon = blk.ramp[rampIdx];
-        const tIdx = (((lon >> 1) + rot) % tlen + tlen) % tlen;
-        const [r, g, bl] = heatmapColor(blk.terrain[tIdx]);
-        // simple sphere shading toward the limb
+        let val: number;
+        if (mapData) {
+          // longitude ramp → column within the visible hemisphere (mapW/2), spun by rot
+          const col = (((Math.round((lon / rampMaxAll) * (mapW / 2)) + rotCols) % mapW) + mapW) % mapW;
+          val = mapData[mapRow * mapW + col];
+        } else {
+          const tIdx = (((lon >> 1) + rot) % tlen + tlen) % tlen;
+          val = blk.terrain[tIdx];
+        }
+        const [r, g, bl] = planetColor(val);
+        // sphere shading toward the limb
         const shade = 0.55 + 0.45 * cosLat;
         const o = (py * GLOBE_SZ + px) * 4;
         out[o] = r * shade;
@@ -129,7 +145,7 @@ export function MapViewer() {
     const id = ctx.createImageData(GLOBE_SZ, GLOBE_SZ);
     id.data.set(out);
     ctx.putImageData(id, 0, 0);
-  }, [mode, globe, rot, scaleCurve]);
+  }, [mode, globe, rot, scaleCurve, mapData]);
 
   // auto-spin
   useEffect(() => {
@@ -183,7 +199,7 @@ export function MapViewer() {
           <div className="small muted" style={{ marginTop: 8 }}>
             {mode === "flat"
               ? "Heatmap preview (low = blue/sand → high = red/white rock)."
-              : `Globe: each latitude's terrain bytes from GLOBDATA on a sphere via the longitude ramps${scaleCurve ? ", foreshortened by the real TABLAT scale curve" : ""}. Data-driven (validated parse); the exact ASM pixel projection (palette/orientation) is still pending.`}
+              : `Globe: ${mapData ? "the real MAP.HSQ terrain wrapped onto the sphere" : "GLOBDATA latitude bytes (load MAP.HSQ to wrap the real terrain)"} via the GLOBDATA longitude ramps${scaleCurve ? " + the real TABLAT foreshortening" : ""}, desert palette + limb shading. Geometry validated (TABLAT); exact ASM orientation/palette (sub_1BA75) still unpublished.`}
           </div>
         </Panel>
       )}

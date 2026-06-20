@@ -38,6 +38,38 @@ export function heatmapColor(val: number): [number, number, number] {
   return [255, Math.floor(255 * u), Math.floor(255 * u)];
 }
 
+/**
+ * Arrakis terrain palette for the globe view: a desert ramp (dark rock → dune
+ * sand → pale highlands) rather than the analytic heatmap. The exact in-game
+ * globe palette lives in DNCDPRG (sub_1BA75) and isn't published, so this is a
+ * plausible planet-surface colouring, not a byte-exact reproduction.
+ */
+export function planetColor(val: number): [number, number, number] {
+  const stops: [number, [number, number, number]][] = [
+    [0, [45, 30, 20]], // shadowed rock
+    [64, [120, 72, 38]], // red rock
+    [128, [196, 146, 84]], // dune sand
+    [192, [232, 202, 150]], // bright sand
+    [255, [150, 140, 122]], // pale rocky highland
+  ];
+  let lo = stops[0];
+  let hi = stops[stops.length - 1];
+  for (let i = 0; i < stops.length - 1; i++) {
+    if (val >= stops[i][0] && val <= stops[i + 1][0]) {
+      lo = stops[i];
+      hi = stops[i + 1];
+      break;
+    }
+  }
+  const span = hi[0] - lo[0] || 1;
+  const t = (val - lo[0]) / span;
+  return [
+    Math.round(lo[1][0] + (hi[1][0] - lo[1][0]) * t),
+    Math.round(lo[1][1] + (hi[1][1] - lo[1][1]) * t),
+    Math.round(lo[1][2] + (hi[1][2] - lo[1][2]) * t),
+  ];
+}
+
 export interface MapImage {
   width: number;
   height: number;

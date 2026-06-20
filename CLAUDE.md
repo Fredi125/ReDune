@@ -201,7 +201,12 @@ python3 tools/condit_decompiler.py samples/CONDIT.HSQ --chains
 
 ### Medium Priority
 - [ ] In-browser OPL2/MT-32 synthesis for true HERAD playback (currently MIDI export only)
-- [ ] True MAP globe projection (via TABLAT) instead of the row-major heatmap
+
+- [x] True MAP globe projection → `MapViewer` globe mode wraps the **real
+  MAP.HSQ terrain** onto the sphere (GLOBDATA longitude ramps + TABLAT
+  foreshortening + limb shading) with a Dune desert palette (`map.ts planetColor`),
+  replacing the row-major heatmap. Verified: real terrain varies across the disc
+  over the full pole-to-pole row span. Falls back to GLOBDATA bytes if MAP absent.
 
 - [x] CONDIT VM **evaluator** (runtime, not just decompiler) → `web/src/codecs/conditVM.ts`
   (`evalCondit`/`evalBytecode`, faithful sub_C266 stack machine) + new **Play tab**:
@@ -255,7 +260,7 @@ python3 tools/condit_decompiler.py samples/CONDIT.HSQ --chains
 
 ### Low Priority (blocked on disassembly we don't have)
 - [ ] Cycle-exact YM3812 (OPL2) emulator for bit-perfect HERAD timbre (current FM synth is a faithful 2-op approximation)
-- [ ] Exact MAP globe palette/terrain-source/orientation from the ASM (sub_1BA75) — geometry is validated (TABLAT), but the exact pixel mapping isn't published
+- [ ] Byte-exact MAP globe palette/orientation from the ASM (sub_1BA75) — geometry is validated (TABLAT) and the real MAP terrain is now wrapped on the sphere with a plausible desert palette; only the exact in-game palette + longitude origin remain (unpublished)
 
 ## External References
 
