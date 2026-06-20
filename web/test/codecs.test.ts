@@ -24,7 +24,7 @@ import { parseTablat } from "../src/codecs/tablat";
 import { HnmFile } from "../src/codecs/hnm";
 import { loadHerad, parseTrackEvents, parseHerad, encodeHerad, writeInstrument, parseInstruments } from "../src/codecs/herad";
 import { decodeVoc, encodeVoc, vocToWav, wavToSamples } from "../src/codecs/voc";
-import { heatmapColor, detectMapWidth, planetColor } from "../src/codecs/map";
+import { heatmapColor, detectMapWidth, planetColor, decodeMap } from "../src/codecs/map";
 import { parseLop, encodeLop, decodePackbits, encodePackbits } from "../src/codecs/lop";
 import { hsqDecompress as hsqDec } from "../src/codecs/compression";
 import { detectAssetType } from "../src/ui/detect";
@@ -464,6 +464,28 @@ console.log("\nLOP animation:");
       skip("LOP vs Python", String(e));
     }
   }
+}
+
+// ---------------------------------------------------------------------------
+// MAP / GLOBDATA recompiler: editing works on the decompressed grid, and
+// re-export (hsqCompress) decodes back to that grid losslessly. HSQ is a
+// non-unique compressor so the bytes aren't identical to the original, but the
+// re-exported file is a valid replacement that decodes to the edited content.
+// ---------------------------------------------------------------------------
+console.log("\nData-format recompile (HSQ round-trip):");
+for (const f of ["MAP.HSQ", "MAP2.HSQ", "GLOBDATA.HSQ"]) {
+  const path = join(GD, f);
+  if (!existsSync(path)) {
+    skip(`${f} recompile`, "missing");
+    continue;
+  }
+  const grid = decodeMap(read(path)); // = hsqDecompress
+  // unedited export decodes back to the same grid
+  ok(`${f} re-export decodes to same grid`, eq(hsqDecompress(hsqCompress(grid)), grid), `${grid.length}B grid`);
+  // an edit survives the export→reload round-trip
+  const edited = grid.slice();
+  edited[edited.length >> 1] ^= 0x55;
+  ok(`${f} edited grid round-trips`, eq(hsqDecompress(hsqCompress(edited)), edited));
 }
 
 // ---------------------------------------------------------------------------

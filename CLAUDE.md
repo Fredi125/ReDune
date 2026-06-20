@@ -185,7 +185,8 @@ python3 tools/condit_decompiler.py samples/CONDIT.HSQ --chains
 - [x] Codec parity tests → `web/test/codecs.test.ts` (35 checks, byte-for-byte vs Python on real game files)
 - [x] Web Rooms tab → SAL decode/edit + canvas compositor (layout + decoration sprites) + byte-identical .SAL export
 - [x] Web Text tab → PHRASE/COMMAND string editor (lossless edit form, re-export .HSQ) for translations/mods
-- [x] Web Map tab → MAP.HSQ heatmap viewer; Web Audio tab → VOC sound playback + WAV export
+- [x] Web Map tab → MAP.HSQ heatmap viewer + **terrain paint editor** (✎ brush, export valid MAP.HSQ); Web Audio tab → VOC sound playback + WAV export
+- [x] Data-format recompile verified → MAP/MAP2/GLOBDATA decode→hsqCompress decode back to the (edited) grid losslessly (HSQ is non-unique so not byte-identical, but a valid replacement); foundation for the MAP terrain editor
 - [x] CONDIT studio file-type detection (warns when a sprite/other HSQ is loaded instead of CONDIT)
 - [x] Web Story tab → DIALOGUE×CONDIT×PHRASE cross-reference ("visual novel" tier: option, gating condition, spoken line)
 - [x] Web Font tab → DNCHAR.BIN bitmap-font viewer (glyph atlas + live proportional text preview)

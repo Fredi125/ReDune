@@ -1,8 +1,9 @@
 import { useEffect, useRef, useState } from "react";
 import { decodeMap, detectMapWidth, MAP_WIDTHS, planetColor, renderMapRGBA } from "../codecs/map";
+import { hsqCompress } from "../codecs/compression";
 import { loadGlobe, type GlobeScanline } from "../codecs/globdata";
 import { parseTablat, tablatScaleCurve } from "../codecs/tablat";
-import { LoadBar, Panel } from "./shared";
+import { downloadBytes, LoadBar, Panel } from "./shared";
 import { useIncoming } from "./routing";
 
 const GLOBE_R = 95;
@@ -21,11 +22,39 @@ export function MapViewer() {
   const [scale, setScale] = useState(2);
   const [rot, setRot] = useState(0);
   const [spin, setSpin] = useState(false);
+  const [editing, setEditing] = useState(false);
+  const [brush, setBrush] = useState(0xc0);
+  const [rev, setRev] = useState(0);
+  const [dirty, setDirty] = useState(false);
+  const painting = useRef(false);
   const flatRef = useRef<HTMLCanvasElement>(null);
   const globeRef = useRef<HTMLCanvasElement>(null);
 
+  const paintAt = (e: React.MouseEvent<HTMLCanvasElement>) => {
+    const c = flatRef.current;
+    if (!c || !mapData) return;
+    const w = width || detectMapWidth(mapData.length);
+    const h = Math.floor(mapData.length / w);
+    const r = c.getBoundingClientRect();
+    const px = Math.floor(((e.clientX - r.left) / r.width) * w);
+    const py = Math.floor(((e.clientY - r.top) / r.height) * h);
+    if (px < 0 || py < 0 || px >= w || py >= h) return;
+    const i = py * w + px;
+    if (mapData[i] === brush) return;
+    mapData[i] = brush;
+    setDirty(true);
+    setRev((v) => v + 1);
+  };
+
+  const exportMap = () => {
+    if (!mapData) return;
+    downloadBytes(mapName || "MAP.HSQ", hsqCompress(mapData));
+  };
+
   const loadMap = (n: string, bytes: Uint8Array) => {
     setError("");
+    setDirty(false);
+    setEditing(false);
     try {
       setMapData(decodeMap(bytes));
       setMapName(n);
@@ -76,7 +105,7 @@ export function MapViewer() {
     const id = ctx.createImageData(img.width, img.height);
     id.data.set(img.rgba);
     ctx.putImageData(id, 0, 0);
-  }, [mode, mapData, width]);
+  }, [mode, mapData, width, rev]);
 
   // globe sphere: the GLOBDATA longitude ramps + TABLAT foreshortening give the
   // geometry; when MAP.HSQ is loaded we wrap the *real* world terrain onto it
@@ -177,6 +206,14 @@ export function MapViewer() {
                   </select>
                   <label className="muted">scale</label>
                   <input type="range" min={1} max={4} value={scale} onChange={(e) => setScale(+e.target.value)} />
+                  <label className="muted" title="Click/drag the map to paint terrain"><input type="checkbox" checked={editing} onChange={(e) => setEditing(e.target.checked)} /> ✎ edit</label>
+                  {editing && (
+                    <>
+                      <span className="swatch" title={`brush 0x${brush.toString(16)}`} style={{ background: `rgb(${planetColor(brush).join(",")})`, width: 16, height: 16, display: "inline-block", border: "1px solid var(--border)" }} />
+                      <input type="range" min={0} max={255} value={brush} title={`terrain 0x${brush.toString(16)}`} onChange={(e) => setBrush(+e.target.value)} />
+                    </>
+                  )}
+                  {dirty && <button className="btn primary" onClick={exportMap}>⤓ Export .HSQ</button>}
                 </>
               )}
               {mode === "globe" && (
@@ -191,14 +228,22 @@ export function MapViewer() {
         >
           {mode === "flat" ? (
             <div style={{ overflow: "auto", maxHeight: 520 }}>
-              <canvas ref={flatRef} className="pixel" style={{ width: `calc(${scale} * 320px)`, imageRendering: "pixelated" }} />
+              <canvas
+                ref={flatRef}
+                className="pixel"
+                style={{ width: `calc(${scale} * 320px)`, imageRendering: "pixelated", cursor: editing ? "crosshair" : "default" }}
+                onMouseDown={editing ? (e) => { painting.current = true; paintAt(e); } : undefined}
+                onMouseMove={editing ? (e) => { if (painting.current) paintAt(e); } : undefined}
+                onMouseUp={() => { painting.current = false; }}
+                onMouseLeave={() => { painting.current = false; }}
+              />
             </div>
           ) : (
             <canvas ref={globeRef} className="pixel" style={{ width: GLOBE_SZ * 2, height: GLOBE_SZ * 2, imageRendering: "pixelated" }} />
           )}
           <div className="small muted" style={{ marginTop: 8 }}>
             {mode === "flat"
-              ? "Heatmap preview (low = blue/sand → high = red/white rock)."
+              ? `Heatmap (low = blue/sand → high = red/white rock).${editing ? " ✎ Click/drag to paint the brush terrain value; ⤓ Export writes a valid MAP.HSQ that decodes to your edits." : " Toggle ✎ edit to paint terrain."}`
               : `Globe: ${mapData ? "the real MAP.HSQ terrain wrapped onto the sphere" : "GLOBDATA latitude bytes (load MAP.HSQ to wrap the real terrain)"} via the GLOBDATA longitude ramps${scaleCurve ? " + the real TABLAT foreshortening" : ""}, desert palette + limb shading. Geometry validated (TABLAT); exact ASM orientation/palette (sub_1BA75) still unpublished.`}
           </div>
         </Panel>
