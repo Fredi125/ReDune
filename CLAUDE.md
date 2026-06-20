@@ -51,6 +51,7 @@ dune1992-re/
 │   ├── save_format.md      ← Complete save file map
 │   ├── condit_vm.md        ← CONDIT VM architecture
 │   ├── adlib_driver.md     ← DN* sound drivers + OPL2 register map (from DNADL disasm)
+│   ├── vga_overlays.md     ← DN386/DNVGA VGA render drivers (blit ABI, globe-fill, palette cycle)
 │   └── file_formats.md     ← Game resource formats (HSQ, SAL, HNM, etc.)
 └── samples/            ← Example data files (not game files)
 ```
@@ -306,23 +307,30 @@ python3 tools/condit_decompiler.py samples/CONDIT.HSQ --chains
   & 0xC0+ch (@0x958), and the 12-note F-number table @0x47 → 0xA0/0xB0. The fnum
   table is equal-tempered (≤~8 cents), confirming `heradFm.ts` tuning is correct.
 
-### Key RE finding — where the rendering layer lives
-`DNCDPRG.EXE` (the published `OpenRakis/asm/cd/DNCDPRG.ASM`, MD5
-52A219E5…, single `seg000`) contains the **loader + CONDIT VM + HSQ
-decompressor only** — it has **zero** VGA palette/framebuffer I/O (no
-`3C8h`/`3C9h`, no `0A000h`), no globe geometry, and no sprite-animation tables
-(verified by full search; the CONDIT VM anchors `sub_C266`/`off_C246` confirm
-it's the right file). The graphics/render layer is in the **HSQ overlays**
-`DN386.HSQ` (386 main, the "CS1" segment the project's `sub_1BA75` /
-`calc_SAL_index@CS1:0x5E4F` citations refer to) and `DNVGA.HSQ` (VGA driver).
-Palette cycling was extracted from there (band 0x80–0xBF, above). The globe
-projection and sprite-animation sequences also live in these overlays — that's
-the binary to disassemble next for their ground truth, not DNCDPRG.
+### Key RE finding — the rendering stack (3 layers) → `docs/vga_overlays.md`
+1. `DNCDPRG.EXE` (published `OpenRakis/asm/cd/DNCDPRG.ASM`, single `seg000`):
+   **loader + CONDIT VM + HSQ decompressor only** — **zero** VGA palette/
+   framebuffer I/O (no `3C8h`/`3C9h`, no `0A000h`), no globe/sprite code
+   (verified; CONDIT anchors `sub_C266`/`off_C246` confirm it's the right file).
+2. `DN386.HSQ` / `DNVGA.HSQ` (15 KB HSQ overlays, near-identical twins): the
+   **VGA rendering drivers** — a 20-entry blit/fill/clear/scale jump-table ABI
+   (disassembled via objdump 16-bit). Ground-truthed here: **palette cycling**
+   (band 0x80–0xBF @0x0AC4), the **globe sphere-fill** (@0x1B8C: palette bank
+   0x10–0x1F, disc centred col 160/rows 79–80, 200-byte pitch), and the **sprite
+   blit** (@0x0E2D/0x1315 — validated line-by-line against our sprite codec).
+   They contain **no** sprite-cel sequence tables, no animation timer, and no
+   globe longitude accumulator.
+3. **"CS1"** game-logic segment (the project's `sub_1BA75` / `calc_SAL_index
+   @CS1:0x5E4F`, offsets > 64 KB that fit neither binary above): owns *which* cel
+   to draw, the globe's longitude origin/rotation, and scene scripting. **Not
+   disassembled** — the remaining home of the exact sprite-cel sequences + globe
+   rotation. The drivers in (2) just draw what CS1 hands them.
 
-### Low Priority (blocked on overlay disassembly we haven't done yet)
+### Low Priority (blocked on the un-disassembled "CS1" game-logic segment)
 - [ ] Cycle-exact YM3812 (OPL2) emulator for bit-perfect HERAD timbre (the OPL2 software synth is now a faithful, sample-accurate model — see Medium Priority — but not register-cycle-exact)
-- [ ] Sprite **animation frame-sequence tables** (exact) — in DN386/DNVGA overlays, not DNCDPRG; `detectAnimations` recovers heuristic candidates meanwhile
-- [ ] Byte-exact MAP globe palette/orientation — in the DN386 overlay ("CS1" `sub_1BA75`), not the published DNCDPRG.ASM; geometry is validated (TABLAT) and the real MAP terrain is wrapped on the sphere with a plausible desert palette; only the exact in-game palette + longitude origin remain
+- [x] **Globe palette + geometry ground-truthed** from the DN386 sphere-fill (@0x1B8C): planet disc uses palette **bank 0x10–0x1F** (`planetPaletteIndex`, verified @0x1D1E: `0x10 + (val&0x0F)` + special case), centred col 160/rows 79–80, 200-byte pitch, TABLAT half-widths — applied in `web/src/codecs/map.ts` + Map globe view. Still open: the runtime **RGB** of bank 0x10–0x23 (DAC-uploaded, not in the overlay) and the **longitude origin/rotation** (CS1 caller-side, not this primitive).
+- [x] **Sprite blit ABI validated** (@0x0E2D/0x1315) — our sprite codec matches the engine blitter line-by-line (nibble bipixel, index-0 transparency, paletteOffset). Confirmed the overlays hold **no cel-sequence tables / no anim timer**; exact frame sequences live in the un-disassembled CS1 segment, so `detectAnimations` (heuristic) stays the right meanwhile approach.
+- [ ] Disassemble the **"CS1" game-logic segment** (where `sub_1BA75` / `calc_SAL_index@CS1:0x5E4F` live) for the exact sprite-cel sequences + globe longitude origin + the globe's runtime RGB palette — the binary is > 64 KB and fits neither DNCDPRG nor the 15 KB drivers; source not yet located.
 
 ## External References
 

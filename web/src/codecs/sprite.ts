@@ -227,9 +227,17 @@ export interface SpriteAnim {
 /**
  * Recover candidate animation sequences from a sprite sheet: maximal runs of
  * consecutive sprites that share width×height×paletteOffset (≥ `minFrames`).
- * The engine's exact frame groupings/timing live in DNCDPRG.EXE; this is a
- * structural heuristic (like palette-cycle detection) — e.g. it finds the
- * 17-frame talking run in CHAN and leaves single-portrait sheets (PERS) empty.
+ *
+ * This stays a structural heuristic by necessity. Disassembly of the VGA driver
+ * overlays (DN386/DNVGA) confirmed they are *pure renderers*: the blit ABI
+ * (entry @0x0E2D, clipped @0x1315) takes an explicit source pointer each call —
+ * its nibble bipixel unpack, index-0 transparency and paletteOffset all match
+ * this codec (validated line-by-line) — but the overlays hold **no frame-cel
+ * sequence tables and no animation timer** (no int 1Ah / BDA-tick reads). The
+ * cel order + timing live in the game-logic *caller* (the "CS1" main segment,
+ * a binary we haven't disassembled), not in DNCDPRG.EXE nor these drivers. So
+ * this heuristic (e.g. the 17-frame talking run in CHAN; PERS stays empty) is
+ * the right meanwhile approach until that segment is recovered.
  */
 export function detectAnimations(file: SpriteFile, minFrames = 2): SpriteAnim[] {
   const dims: { w: number; h: number; p: number }[] = [];

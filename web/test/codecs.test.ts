@@ -25,7 +25,7 @@ import { HnmFile } from "../src/codecs/hnm";
 import { loadHerad, parseTrackEvents, parseHerad, encodeHerad, writeInstrument, parseInstruments, type HeradInstrument } from "../src/codecs/herad";
 import { OPL2, programChannel, noteOn, renderHeradOpl2 } from "../src/audio/opl2";
 import { decodeVoc, encodeVoc, vocToWav, wavToSamples } from "../src/codecs/voc";
-import { heatmapColor, detectMapWidth, planetColor, decodeMap } from "../src/codecs/map";
+import { heatmapColor, detectMapWidth, planetColor, planetPaletteIndex, decodeMap } from "../src/codecs/map";
 import { parseLop, encodeLop, decodePackbits, encodePackbits } from "../src/codecs/lop";
 import { hsqDecompress as hsqDec } from "../src/codecs/compression";
 import { detectAssetType } from "../src/ui/detect";
@@ -508,15 +508,23 @@ console.log("\nMAP heatmap:");
   });
   ok("map heatmap gradient anchors", good);
 
-  // Globe desert palette: valid RGB across the range, hits its control stops,
-  // and is non-degenerate (sand brighter than shadowed rock).
+  // Globe palette: VERIFIED engine index map (DN386 sphere-fill @0x1D1E) is
+  // 0x10 + (val&0x0F), with a +0x0C special case when (val&0x30)==0x10 and
+  // (val&0x0F)<8 — i.e. the planet disc uses palette bank 0x10–0x23.
   {
     const allValid = Array.from({ length: 256 }, (_, v) => planetColor(v)).every((c) => c.every((ch) => ch >= 0 && ch <= 255));
-    const lo = planetColor(0);
-    const sand = planetColor(128);
-    const stopsOk = lo[0] === 45 && lo[1] === 30 && lo[2] === 20 && sand[0] === 196 && sand[1] === 146 && sand[2] === 84;
-    const brighter = sand[0] + sand[1] + sand[2] > lo[0] + lo[1] + lo[2];
-    ok("globe planetColor valid + hits control stops", allValid && stopsOk && brighter);
+    const idxOk =
+      planetPaletteIndex(0x00) === 0x10 &&
+      planetPaletteIndex(0x0f) === 0x1f &&
+      planetPaletteIndex(0x80) === 0x10 && // bank bits clear → low nibble only
+      planetPaletteIndex(0x10) === 0x1c && // special case: 0 → +0xC → +0x10
+      planetPaletteIndex(0x18) === 0x18; // AL≥8 → no special case
+    const inBank = Array.from({ length: 256 }, (_, v) => planetPaletteIndex(v)).every((x) => x >= 0x10 && x <= 0x23);
+    const lo = planetColor(0x00); // shade 0 → shadowed rock
+    const hi = planetColor(0x0f); // top of the bank → pale highland
+    const stopsOk = lo[0] === 45 && lo[1] === 30 && lo[2] === 20;
+    const brighter = hi[0] + hi[1] + hi[2] > lo[0] + lo[1] + lo[2];
+    ok("globe palette = verified bank 0x10–0x23 + valid RGB", allValid && idxOk && inBank && stopsOk && brighter);
   }
   if (PY) {
     try {

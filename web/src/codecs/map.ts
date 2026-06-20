@@ -39,30 +39,58 @@ export function heatmapColor(val: number): [number, number, number] {
 }
 
 /**
- * Arrakis terrain palette for the globe view: a desert ramp (dark rock → dune
- * sand → pale highlands) rather than the analytic heatmap. The exact in-game
- * globe palette lives in DNCDPRG (sub_1BA75) and isn't published, so this is a
- * plausible planet-surface colouring, not a byte-exact reproduction.
+ * The engine's globe/planet pixel→palette-index map, **verified** from the
+ * DN386 VGA overlay's sphere-fill routine (file offset 0x1D1E):
+ *
+ *   AL = src & 0x0F ;  AH = src & 0x30
+ *   if (AH == 0x10 && AL < 8) AL += 0x0C
+ *   AL += 0x10
+ *
+ * i.e. the planet disc is drawn in the fixed low palette **bank 0x10–0x1F** (a
+ * few shades reach 0x23 via the special case) — NOT the 0x80–0xBF colour-cycle
+ * band, and NOT a 256-level ramp. The fill routine is DN386 @0x1B8C: the disc is
+ * centred at screen column 160 / rows 79–80 and filled symmetrically outward,
+ * 200-byte source pitch (= GLOBDATA latitude-block size), half-width per row from
+ * TABLAT (199·cos lat). Rotation is driven by the *caller* re-projecting the
+ * source each frame, not by this primitive. (The project's old `sub_1BA75` /
+ * DNCDPRG citation was wrong — DNCDPRG.EXE has no render code; this lives in the
+ * DN386 overlay.)
+ */
+export function planetPaletteIndex(val: number): number {
+  let al = val & 0x0f;
+  const ah = val & 0x30;
+  if (ah === 0x10 && al < 8) al += 0x0c;
+  return al + 0x10;
+}
+
+/**
+ * Approximate RGB for the globe view. The engine indexes the ~16-shade palette
+ * bank above; the *actual* RGB of indices 0x10–0x23 is uploaded to the VGA DAC
+ * at runtime (not present in the overlay), so we map the verified shade index
+ * onto a desert ramp (dark rock → sand → pale highland). Faithful in structure
+ * (the real ~16-level banding), approximate in colour.
  */
 export function planetColor(val: number): [number, number, number] {
+  const idx = planetPaletteIndex(val); // 0x10..0x23
+  const shade = Math.max(0, Math.min(19, idx - 0x10)) / 19; // 0..1 across the bank
   const stops: [number, [number, number, number]][] = [
     [0, [45, 30, 20]], // shadowed rock
-    [64, [120, 72, 38]], // red rock
-    [128, [196, 146, 84]], // dune sand
-    [192, [232, 202, 150]], // bright sand
-    [255, [150, 140, 122]], // pale rocky highland
+    [0.25, [120, 72, 38]], // red rock
+    [0.5, [196, 146, 84]], // dune sand
+    [0.75, [232, 202, 150]], // bright sand
+    [1, [150, 140, 122]], // pale rocky highland
   ];
   let lo = stops[0];
   let hi = stops[stops.length - 1];
   for (let i = 0; i < stops.length - 1; i++) {
-    if (val >= stops[i][0] && val <= stops[i + 1][0]) {
+    if (shade >= stops[i][0] && shade <= stops[i + 1][0]) {
       lo = stops[i];
       hi = stops[i + 1];
       break;
     }
   }
   const span = hi[0] - lo[0] || 1;
-  const t = (val - lo[0]) / span;
+  const t = (shade - lo[0]) / span;
   return [
     Math.round(lo[1][0] + (hi[1][0] - lo[1][0]) * t),
     Math.round(lo[1][1] + (hi[1][1] - lo[1][1]) * t),

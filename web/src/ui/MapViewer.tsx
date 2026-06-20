@@ -110,6 +110,10 @@ export function MapViewer() {
   // globe sphere: the GLOBDATA longitude ramps + TABLAT foreshortening give the
   // geometry; when MAP.HSQ is loaded we wrap the *real* world terrain onto it
   // (desert palette), otherwise we fall back to the GLOBDATA latitude bytes.
+  // Ground truth (DN386 sphere-fill @0x1B8C): disc centred col 160 / rows 79–80,
+  // filled symmetrically outward, 200-byte source pitch, half-width from TABLAT;
+  // planet colours come from palette bank 0x10–0x1F (planetColor) — NOT the
+  // 0x80–0xBF cycle band. Rotation is caller-driven, so `rot` stands in for it.
   useEffect(() => {
     if (mode !== "globe") return;
     const c = globeRef.current;
