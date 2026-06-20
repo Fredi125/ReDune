@@ -201,7 +201,19 @@ python3 tools/condit_decompiler.py samples/CONDIT.HSQ --chains
 ## Pending Work
 
 ### Medium Priority
-- [ ] In-browser OPL2/MT-32 synthesis for true HERAD playback (currently MIDI export only)
+- [ ] In-browser **MT-32** synthesis for true HERAD M32 playback (OPL2/AdLib is now a faithful software synth — see below; MT-32 still MIDI-export only)
+
+- [x] **Faithful OPL2 (YM3812) software synth** → `web/src/audio/opl2.ts`
+  (`class OPL2` + `renderHeradOpl2`): sample-accurate, programmed via real
+  register writes (slot tables @0x71/0x7A + F-number table @0x47 from the DNADL
+  disasm), with modulator self-**feedback** (the big thing the oscillator synth
+  lacked), the 4 OPL2 waveforms via the real log-sin/exp pipeline, FM/additive
+  routing, and per-operator ADSR. Music tab gains an engine picker (**OPL2
+  faithful** | WebAudio FM); OPL2 offline-renders the song to a buffer and the
+  patch editor's test-note uses it too. Verified: correct pitch (441 Hz @ note
+  57), exact 2.0 octave ratio, feedback measurably brightens timbre, real songs
+  render. Remaining approximations (honest): KSL, vibrato/tremolo, cycle-exact
+  EG timing, fixed FM depth.
 
 - [x] LOP **recompiler + TS port** → `encode_packbits`/`encode_lop`
   (`tools/lop_decoder.py`) and new `web/src/codecs/lop.ts` (parse/decode +
@@ -240,13 +252,19 @@ python3 tools/condit_decompiler.py samples/CONDIT.HSQ --chains
   (`web/src/codecs/sprite.ts`): groups consecutive same-size frames into
   candidate sequences (CHAN → a 17-frame run; PERS → none, distinct portraits)
   + a live looping preview in the Sprites tab (group picker, fps, palette-cycle
-  aware). Exact engine frame sequences/timing live in DNCDPRG.EXE; this recovers
-  plausible candidates from the sheet structure.
+  aware). Exact engine frame sequences/timing live in the graphics overlays
+  (DN386/DNVGA), **not** DNCDPRG.EXE (which has no sprite/render code); this
+  recovers plausible candidates from the sheet structure.
 
 - [x] Palette colour-cycling → `web/src/codecs/palette.ts` (`detectCycleRanges`
   finds smooth contiguous ramps; `rotatePalette` rotates them) + animated
-  shimmer preview in the Sprites tab (toggle, per-ramp checkboxes, speed). The
-  exact engine cycle ranges live in DNCDPRG.EXE; these are heuristic candidates.
+  shimmer preview in the Sprites tab (toggle, per-ramp checkboxes, speed).
+  **GROUND TRUTH** (`ENGINE_CYCLE_RANGE`): the engine cycles exactly one band —
+  VGA DAC indices **0x80–0xBF (64 colours)**, one slot/frame — verified from the
+  DNVGA/DN386 overlay disasm (rotate routine @DNVGA 0x0ADC / DN386 0x0AC4,
+  range immediates `mov bx,0x80; mov cx,0x40`). The Sprites tab marks that band
+  ✓ verified; other detected ramps stay heuristic. (It is **not** in
+  DNCDPRG.EXE — that EXE has no VGA/palette code at all; see below.)
 - [x] FREQ.HSQ identified — not a data table but a ~1.27 s **silent** 8-bit /
   22 222 Hz VOC calibration buffer ("Sample test to calc freq" + 28 224 × 0x80).
   No decoder needed; documented so it's not mistaken for game audio.
@@ -288,9 +306,23 @@ python3 tools/condit_decompiler.py samples/CONDIT.HSQ --chains
   & 0xC0+ch (@0x958), and the 12-note F-number table @0x47 → 0xA0/0xB0. The fnum
   table is equal-tempered (≤~8 cents), confirming `heradFm.ts` tuning is correct.
 
-### Low Priority (blocked on disassembly we don't have)
-- [ ] Cycle-exact YM3812 (OPL2) emulator for bit-perfect HERAD timbre (current FM synth is a faithful 2-op approximation)
-- [ ] Byte-exact MAP globe palette/orientation from the ASM (sub_1BA75) — geometry is validated (TABLAT) and the real MAP terrain is now wrapped on the sphere with a plausible desert palette; only the exact in-game palette + longitude origin remain (unpublished)
+### Key RE finding — where the rendering layer lives
+`DNCDPRG.EXE` (the published `OpenRakis/asm/cd/DNCDPRG.ASM`, MD5
+52A219E5…, single `seg000`) contains the **loader + CONDIT VM + HSQ
+decompressor only** — it has **zero** VGA palette/framebuffer I/O (no
+`3C8h`/`3C9h`, no `0A000h`), no globe geometry, and no sprite-animation tables
+(verified by full search; the CONDIT VM anchors `sub_C266`/`off_C246` confirm
+it's the right file). The graphics/render layer is in the **HSQ overlays**
+`DN386.HSQ` (386 main, the "CS1" segment the project's `sub_1BA75` /
+`calc_SAL_index@CS1:0x5E4F` citations refer to) and `DNVGA.HSQ` (VGA driver).
+Palette cycling was extracted from there (band 0x80–0xBF, above). The globe
+projection and sprite-animation sequences also live in these overlays — that's
+the binary to disassemble next for their ground truth, not DNCDPRG.
+
+### Low Priority (blocked on overlay disassembly we haven't done yet)
+- [ ] Cycle-exact YM3812 (OPL2) emulator for bit-perfect HERAD timbre (the OPL2 software synth is now a faithful, sample-accurate model — see Medium Priority — but not register-cycle-exact)
+- [ ] Sprite **animation frame-sequence tables** (exact) — in DN386/DNVGA overlays, not DNCDPRG; `detectAnimations` recovers heuristic candidates meanwhile
+- [ ] Byte-exact MAP globe palette/orientation — in the DN386 overlay ("CS1" `sub_1BA75`), not the published DNCDPRG.ASM; geometry is validated (TABLAT) and the real MAP terrain is wrapped on the sphere with a plausible desert palette; only the exact in-game palette + longitude origin remain
 
 ## External References
 

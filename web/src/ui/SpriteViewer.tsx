@@ -13,7 +13,7 @@ import {
   type Sprite,
   type SpriteFile,
 } from "../codecs/sprite";
-import { detectCycleRanges, rotatePalette } from "../codecs/palette";
+import { detectCycleRanges, engineCycleRange, rotatePalette } from "../codecs/palette";
 import { downloadBytes, hex, LoadBar, Panel, Tag } from "./shared";
 import { useIncoming } from "./routing";
 
@@ -167,7 +167,14 @@ export function SpriteViewer() {
   const [cycleSpeed, setCycleSpeed] = useState(8); // steps/sec
   const [phase, setPhase] = useState(0);
   const [disabledRanges, setDisabledRanges] = useState<Set<number>>(new Set());
-  const ranges = useMemo(() => (file ? detectCycleRanges(file.palette) : []), [file]);
+  // The verified engine band (0x80–0xBF) first, then heuristic ramps outside it.
+  const { ranges, engRanges } = useMemo(() => {
+    if (!file) return { ranges: [] as ReturnType<typeof detectCycleRanges>, engRanges: 0 };
+    const eng = engineCycleRange(file.palette);
+    const heur = detectCycleRanges(file.palette);
+    const rest = eng ? heur.filter((r) => r.end < eng.start || r.start > eng.end) : heur;
+    return { ranges: eng ? [eng, ...rest] : rest, engRanges: eng ? 1 : 0 };
+  }, [file]);
   useEffect(() => {
     setDisabledRanges(new Set());
     setPhase(0);
@@ -282,9 +289,10 @@ export function SpriteViewer() {
                     }
                   />{" "}
                   {hex(r.start)}–{hex(r.end)}
+                  {i < engRanges ? " ✓" : ""}
                 </label>
               ))}
-              <span className="muted">(heuristic ranges; exact engine ranges live in the EXE)</span>
+              <span className="muted">{engRanges > 0 ? "✓ = engine band 0x80–0xBF (verified from DNVGA/DN386); others heuristic" : "(heuristic ranges; engine animates only 0x80–0xBF)"}</span>
             </div>
           )}
           {anims.length > 0 && (

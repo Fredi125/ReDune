@@ -1,12 +1,20 @@
 /**
  * ReDune codecs — VGA palette colour-cycling.
  *
- * Cryo's Dune animates several scenes by *colour cycling*: rotating a contiguous
- * range of palette entries each tick (shimmering spice, water, sky gradients,
- * twinkling stars) instead of storing extra frames. The exact ranges the engine
- * cycles live in DNCDPRG.EXE, not in any shipped data file, so this module
- * recovers plausible *candidate* ranges heuristically (smooth, contiguous colour
- * ramps) and applies the rotation — enough to preview/author the effect.
+ * Cryo's Dune animates scenes by *colour cycling*: rotating a contiguous range
+ * of palette (VGA DAC) entries each frame instead of storing extra frames.
+ *
+ * GROUND TRUTH (disassembly of the HSQ overlays `DNVGA`/`DN386`, not the main
+ * `DNCDPRG.EXE`): the engine has exactly one hardcoded cycle band — DAC indices
+ * **0x80–0xBF (64 colours)** — rotated by one slot per frame. The rotate-and-
+ * upload routine is at DNVGA 0x0ADC / DN386 0x0AC4; the range immediates
+ * (`mov bx,0x80; mov cx,0x40`) at DNVGA 0x0AF7 / DN386 0x0ADF, called from the
+ * per-frame screen routine (DNVGA 0x3400 / DN386 0x3405). See
+ * `docs/adlib_driver.md`'s companion note and `ENGINE_CYCLE_RANGE` below.
+ *
+ * `detectCycleRanges` additionally recovers *candidate* ramps heuristically
+ * (smooth contiguous colour runs) for authoring/preview; only the 0x80–0xBF
+ * band is the one this code path actually animates in-game.
  */
 import type { RGB } from "./sprite";
 
@@ -15,6 +23,29 @@ export interface CycleRange {
   start: number;
   /** last palette index in the ramp (inclusive) */
   end: number;
+}
+
+/**
+ * The engine's single hardcoded colour-cycle band, verified from the DNVGA /
+ * DN386 overlay disassembly: VGA DAC indices 0x80–0xBF (128–191), 64 entries,
+ * rotated one slot per frame. This is authoritative (not a heuristic).
+ */
+export const ENGINE_CYCLE_RANGE: CycleRange = { start: 0x80, end: 0xbf };
+
+/**
+ * The verified engine cycle band, clamped to the indices actually present in
+ * `palette`. Returns null if the palette has no entries in 0x80–0xBF.
+ */
+export function engineCycleRange(palette: Map<number, RGB>): CycleRange | null {
+  let lo = -1;
+  let hi = -1;
+  for (let i = ENGINE_CYCLE_RANGE.start; i <= ENGINE_CYCLE_RANGE.end; i++) {
+    if (palette.has(i)) {
+      if (lo < 0) lo = i;
+      hi = i;
+    }
+  }
+  return lo >= 0 && hi - lo + 1 >= 2 ? { start: lo, end: hi } : null;
 }
 
 function dist2(a: RGB, b: RGB): number {

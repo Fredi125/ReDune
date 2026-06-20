@@ -93,6 +93,26 @@ temperament** within OPL F-number quantization (≤ ~8 cents), which confirms th
 the Hz-based 2-op FM synth in `web/src/audio/heradFm.ts` uses the correct tuning
 — HERAD note numbers are plain semitones, no exotic scale.
 
+## The OPL2 software synth (`web/src/audio/opl2.ts`)
+
+This register map is implemented faithfully by `class OPL2`: a sample-accurate
+YM3812 model you drive through the exact register writes above. `programChannel`
+loads a HERAD 2-op patch (the 0x20/0x40/0x60/0x80/0xE0/0xC0 groups), `noteOn`
+writes 0xA0/0xB0 using the @0x47 F-number table, and `renderHeradOpl2` plays a
+whole song by allocating notes across the 9 channels and offline-rendering to a
+buffer. It reproduces modulator self-**feedback**, the 4 OPL2 waveforms via the
+real log-sin/exp attenuation pipeline (so the chip's quantisation/harmonics are
+present, not idealised sine×gain), and FM-vs-additive routing — the things the
+older WebAudio oscillator synth (`heradFm.ts`) could not. Honest remaining
+approximations: KSL, vibrato/tremolo (reg 0xBD), a fixed FM depth, and a
+calibrated (not register-cycle-exact) EG rate→time mapping.
+
+> **Companion finding (graphics):** the *palette* hardware code is **not** in
+> `DNCDPRG.EXE` (it has no `3C8h`/`3C9h` I/O) — it lives in the `DNVGA`/`DN386`
+> overlays, where the one hardcoded colour-cycle band is **DAC 0x80–0xBF** (64
+> entries, one slot/frame; rotate routine @DNVGA 0x0ADC / DN386 0x0AC4). See
+> `web/src/codecs/palette.ts` (`ENGINE_CYCLE_RANGE`).
+
 ## What the static analysis cannot resolve
 
 Sound Blaster / MT-32 *audio* base ports are configured at runtime (from

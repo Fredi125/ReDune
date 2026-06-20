@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { encodeHerad, loadHerad, parseTrackEvents, writeInstrument, type HeradInstrument, type HeradLoad } from "../codecs/herad";
 import { hsqCompress } from "../codecs/compression";
 import { midiToFreq, oplWaves, playFmNote } from "../audio/heradFm";
+import { OPL2, noteOff, noteOn, programChannel, renderHeradOpl2 } from "../audio/opl2";
 import { downloadBytes, hex, LoadBar, NumberField, Panel, Tag } from "./shared";
 import { useIncoming } from "./routing";
 
@@ -23,6 +24,8 @@ export function HeradStudio() {
   const [error, setError] = useState("");
   const [bpm, setBpm] = useState(120);
   const [playing, setPlaying] = useState(false);
+  const [engine, setEngine] = useState<"opl2" | "webaudio">("opl2");
+  const [rendering, setRendering] = useState(false);
   const ctxRef = useRef<AudioContext | null>(null);
   const stopTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [insts, setInsts] = useState<HeradInstrument[]>([]);
@@ -69,12 +72,69 @@ export function HeradStudio() {
     stop();
     const ctx = new AudioContext();
     ctxRef.current = ctx;
-    const master = ctx.createGain();
-    master.gain.value = 0.5;
-    master.connect(ctx.destination);
-    const t0 = ctx.currentTime + 0.05;
-    playFmNote(ctx, master, oplWaves(ctx), ins, midiToFreq(60), 110, t0, t0 + 0.6);
-    stopTimer.current = setTimeout(stop, 1000);
+    if (engine === "opl2") {
+      // Render a short note through the real OPL2 core and play the buffer.
+      const opl = new OPL2(ctx.sampleRate);
+      programChannel(opl, 0, ins);
+      noteOn(opl, 0, 60);
+      const n = Math.floor(ctx.sampleRate * 0.75);
+      const arr = new Float32Array(n);
+      const offAt = Math.floor(n * 0.6);
+      for (let i = 0; i < n; i++) {
+        if (i === offAt) noteOff(opl, 0, 60);
+        arr[i] = opl.generate();
+      }
+      const buf = ctx.createBuffer(1, n, ctx.sampleRate);
+      buf.getChannelData(0).set(arr);
+      const src = ctx.createBufferSource();
+      src.buffer = buf;
+      const g = ctx.createGain();
+      g.gain.value = 0.9;
+      src.connect(g);
+      g.connect(ctx.destination);
+      src.start();
+    } else {
+      const master = ctx.createGain();
+      master.gain.value = 0.5;
+      master.connect(ctx.destination);
+      const t0 = ctx.currentTime + 0.05;
+      playFmNote(ctx, master, oplWaves(ctx), ins, midiToFreq(60), 110, t0, t0 + 0.6);
+    }
+    stopTimer.current = setTimeout(stop, 1100);
+  };
+
+  // Offline-render the whole song through the faithful OPL2 core and play it.
+  const playOpl2 = async () => {
+    if (!loaded) return;
+    stop();
+    setRendering(true);
+    await new Promise((r) => setTimeout(r, 10)); // let the "rendering…" state paint
+    try {
+      const ctx = new AudioContext();
+      ctxRef.current = ctx;
+      const insArr = insts.length ? insts : [DEFAULT_INST];
+      const data = renderHeradOpl2(loaded.info.tracks, loaded.info.format, insArr, bpm, ctx.sampleRate, TPQ);
+      setRendering(false);
+      if (data.length === 0) {
+        stop();
+        return;
+      }
+      const buf = ctx.createBuffer(1, data.length, ctx.sampleRate);
+      buf.getChannelData(0).set(data);
+      const src = ctx.createBufferSource();
+      src.buffer = buf;
+      const master = ctx.createGain();
+      master.gain.value = 0.9;
+      src.connect(master);
+      master.connect(ctx.destination);
+      src.start();
+      setPlaying(true);
+      stopTimer.current = setTimeout(stop, (data.length / ctx.sampleRate + 0.3) * 1000);
+    } catch (e) {
+      setRendering(false);
+      setError(String(e));
+      stop();
+    }
   };
 
   const trackStats = useMemo(() => {
@@ -162,9 +222,14 @@ export function HeradStudio() {
           accent="var(--purple)"
           right={
             <div className="row small">
+              <label className="muted">engine</label>
+              <select value={engine} disabled={playing || rendering} title="OPL2 = faithful YM3812 software synth (feedback, real waveforms); WebAudio = lightweight FM approximation" onChange={(e) => setEngine(e.target.value as "opl2" | "webaudio")}>
+                <option value="opl2">OPL2 (faithful)</option>
+                <option value="webaudio">WebAudio FM</option>
+              </select>
               <label className="muted">bpm</label>
               <input type="number" min={40} max={300} value={bpm} style={{ width: 56 }} onChange={(e) => setBpm(Math.max(40, +e.target.value || 120))} />
-              <button className="btn primary" onClick={playing ? stop : play}>{playing ? "■ Stop" : "▶ Play"}</button>
+              <button className="btn primary" disabled={rendering} onClick={playing ? stop : engine === "opl2" ? playOpl2 : play}>{rendering ? "⏳ rendering…" : playing ? "■ Stop" : "▶ Play"}</button>
               <button className="btn" onClick={() => downloadBytes(name.replace(/\.[^.]+$/, "") + ".mid", loaded.midi)}>⤓ MIDI</button>
               {edited && <Tag color="var(--amber)">edited</Tag>}
               <button className="btn primary" onClick={exportFile} title="Re-encode (byte-identical when unedited) and re-compress to HSQ">⤓ Export {loaded.wasHsq ? ".HSQ" : "file"}</button>
@@ -237,9 +302,12 @@ export function HeradStudio() {
             </div>
           )}
           <div className="small muted" style={{ marginTop: 10 }}>
-            <b>▶ Play</b> renders the decoded <b>OPL2 instrument patches</b> through a 2-operator WebAudio FM synth
-            (real waveforms, MULT, TL, ADSR and FM/additive routing per patch) — close to the AdLib timbre, though not a
-            cycle-exact YM3812 emulator. <b>⤓ MIDI</b> exports a Standard MIDI File for external players.
+            <b>▶ Play</b> drives the decoded <b>OPL2 instrument patches</b> through the selected engine. <b>OPL2 (faithful)</b>{" "}
+            is a sample-accurate YM3812 software synth — programmed via real register writes (slot tables + F-number table from
+            the <code>DNADL</code> driver disasm), with modulator self-<b>feedback</b>, the four OPL2 waveforms via the real
+            log-sin/exp pipeline, FM/additive routing and per-operator ADSR; it offline-renders the song to a buffer
+            (KSL/vibrato and cycle-exact EG timing are the remaining approximations). <b>WebAudio FM</b> is the older
+            lightweight oscillator approximation. <b>⤓ MIDI</b> exports a Standard MIDI File for external players.
           </div>
         </Panel>
       )}

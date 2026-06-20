@@ -8,7 +8,7 @@ import { strict as assert } from "node:assert";
 import { execFileSync } from "node:child_process";
 import { readFileSync, existsSync } from "node:fs";
 import { fileURLToPath } from "node:url";
-import { dirname, resolve, join } from "node:path";
+import { dirname, resolve, join, basename } from "node:path";
 
 import { hsqDecompress, hsqCompress, f7Decompress, f7Compress, isHsq } from "../src/codecs/compression";
 import { loadCondit, conditEntries, compileExpr, bytesToHex } from "../src/codecs/condit";
@@ -22,13 +22,14 @@ import { parseDat, extractFile, buildDat, rebuildDat } from "../src/codecs/dat";
 import { loadGradientTables, loadGlobe } from "../src/codecs/globdata";
 import { parseTablat } from "../src/codecs/tablat";
 import { HnmFile } from "../src/codecs/hnm";
-import { loadHerad, parseTrackEvents, parseHerad, encodeHerad, writeInstrument, parseInstruments } from "../src/codecs/herad";
+import { loadHerad, parseTrackEvents, parseHerad, encodeHerad, writeInstrument, parseInstruments, type HeradInstrument } from "../src/codecs/herad";
+import { OPL2, programChannel, noteOn, renderHeradOpl2 } from "../src/audio/opl2";
 import { decodeVoc, encodeVoc, vocToWav, wavToSamples } from "../src/codecs/voc";
 import { heatmapColor, detectMapWidth, planetColor, decodeMap } from "../src/codecs/map";
 import { parseLop, encodeLop, decodePackbits, encodePackbits } from "../src/codecs/lop";
 import { hsqDecompress as hsqDec } from "../src/codecs/compression";
 import { detectAssetType } from "../src/ui/detect";
-import { detectCycleRanges, rotatePalette } from "../src/codecs/palette";
+import { detectCycleRanges, rotatePalette, ENGINE_CYCLE_RANGE, engineCycleRange } from "../src/codecs/palette";
 import type { RGB } from "../src/codecs/sprite";
 import { evalExpr, evalCondit, type VarStore } from "../src/codecs/conditVM";
 
@@ -763,6 +764,64 @@ for (const f of ["ARRAKIS.HSQ", "ARRAKIS.AGD", "ARRAKIS.M32", "WATER.HSQ", "SIET
 }
 
 // ---------------------------------------------------------------------------
+// OPL2 software synth: correct pitch/tuning, audible feedback, real-song render
+// ---------------------------------------------------------------------------
+console.log("\nOPL2 synth:");
+{
+  const SR = 44100;
+  const mkInst = (over: Partial<HeradInstrument>): HeradInstrument => ({
+    index: 0, mode: 0, feedback: 0, con: 1, modMul: 1, carMul: 1, modOut: 63, carOut: 0,
+    modA: 15, modD: 0, modS: 0, modR: 5, carA: 15, carD: 0, carS: 0, carR: 5, modWave: 0, carWave: 0,
+    modOutVel: 0, carOutVel: 0, ...over,
+  });
+  const renderNote = (it: HeradInstrument, note: number) => {
+    const opl = new OPL2(SR);
+    programChannel(opl, 0, it);
+    noteOn(opl, 0, note);
+    const n = Math.floor(SR * 0.4);
+    const out = new Float32Array(n);
+    for (let i = 0; i < n; i++) out[i] = opl.generate();
+    return out.subarray(Math.floor(n * 0.3));
+  };
+  const f0 = (b: Float32Array) => {
+    let best = 0, lag0 = 1;
+    for (let lag = Math.floor(SR / 2000); lag <= Math.floor(SR / 80); lag++) {
+      let s = 0;
+      for (let i = 0; i < b.length - lag; i++) s += b[i] * b[i + lag];
+      if (s > best) { best = s; lag0 = lag; }
+    }
+    return SR / lag0;
+  };
+  const bright = (b: Float32Array) => {
+    let d = 0;
+    for (let i = 1; i < b.length; i++) d += (b[i] - b[i - 1]) ** 2;
+    return Math.sqrt(d / b.length);
+  };
+  const a4 = renderNote(mkInst({}), 57);
+  let rms = 0;
+  for (const v of a4) rms += v * v;
+  rms = Math.sqrt(rms / a4.length);
+  ok("OPL2 pure tone non-silent @ ~440Hz", rms > 0.05 && Math.abs(f0(a4) - 440) < 12, `f0=${f0(a4).toFixed(1)}Hz rms=${rms.toFixed(2)}`);
+  const a5 = renderNote(mkInst({}), 69);
+  ok("OPL2 octave ratio == 2", Math.abs(f0(a5) / f0(a4) - 2) < 0.05, `A4=${f0(a4).toFixed(0)} A5=${f0(a5).toFixed(0)}`);
+  const noFb = bright(renderNote(mkInst({ modOut: 0, feedback: 0 }), 57));
+  const fb7 = bright(renderNote(mkInst({ modOut: 0, feedback: 7 }), 57));
+  ok("OPL2 feedback brightens timbre", fb7 > noFb * 1.5, `no-fb=${noFb.toFixed(2)} fb7=${fb7.toFixed(2)}`);
+
+  // Render a real song to a buffer and assert it produces sustained output.
+  const songPath = ["ARRAKIS.HSQ", "WATER.HSQ"].map((f) => join(GD, f)).find((p) => existsSync(p));
+  if (songPath) {
+    const L = loadHerad(read(songPath), basename(songPath));
+    const buf = renderHeradOpl2(L.info.tracks, L.info.format, L.instruments, 120, SR, 120, 8);
+    let energy = 0;
+    for (const v of buf) energy += v * v;
+    ok("OPL2 renders a real HERAD song", buf.length > SR && energy / buf.length > 1e-4, `${(buf.length / SR).toFixed(1)}s, rms=${Math.sqrt(energy / buf.length).toFixed(3)}`);
+  } else {
+    skip("OPL2 song render", "no HERAD file present");
+  }
+}
+
+// ---------------------------------------------------------------------------
 // NPC / smuggler save data: TS offsets must match the Python decoder
 // ---------------------------------------------------------------------------
 console.log("\nNPC / smuggler save data:");
@@ -898,6 +957,15 @@ console.log("\nPalette colour-cycling:");
     rot.get(20)![0] === 255; // untouched index preserved
   ok("rotatePalette rotates a range and leaves others intact", okRot);
   ok("rotatePalette identity at step 0", rotatePalette(pal, ranges, 0) === pal);
+
+  // Verified engine cycle band (0x80–0xBF) from the DNVGA/DN386 disasm.
+  ok("ENGINE_CYCLE_RANGE is 0x80–0xBF", ENGINE_CYCLE_RANGE.start === 0x80 && ENGINE_CYCLE_RANGE.end === 0xbf);
+  const engPal = new Map<number, RGB>();
+  for (let i = 0x80; i <= 0xbf; i++) engPal.set(i, [i, 0, 0]);
+  engPal.set(0x10, [1, 2, 3]); // outside the band
+  const eng = engineCycleRange(engPal);
+  ok("engineCycleRange clamps to present band indices", !!eng && eng.start === 0x80 && eng.end === 0xbf);
+  ok("engineCycleRange is null when palette misses the band", engineCycleRange(new Map([[0x10, [1, 2, 3] as RGB]])) === null);
 
   // Real sprite palette: ramps should be found, and rotation must never change
   // the set of indices present.
