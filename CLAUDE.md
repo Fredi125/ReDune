@@ -164,6 +164,7 @@ python3 tools/condit_decompiler.py samples/CONDIT.HSQ --chains
 - [x] Decode BIN files (DNCHAR font, TABLAT, VER, THE_END) → `tools/bin_decoder.py`
 - [x] Decode sprite/graphics HSQ format → `tools/sprite_decoder.py` (palettes, pixel data)
 - [x] **8-bit scene-background decode** → the ~82 full-screen 320×152 images (room interiors `DS*`/`DP*`/`DH*`/`DV*`/`DF*`/`VIL*`, `INT*` landscapes, `VG*`, `PALAIS`, `BOOK`, `IRUL*` subtitle strips) are **256-colour**, not 4-bit. `palette_offset 0xFE/0xFF` flags 8-bit mode (one byte/pixel, same RLE control, no scanline align). Added the branch to `decode_sprite`/`decodeSprite` (Python↔TS byte-identical, tested); palette-bearing ones (INT*/VG*/PALAIS, 0xFE) render with their embedded palette, palette-less ones (0xFF) need an external scene palette. Was previously mis-decoded as 4-bit dither-noise.
+- [x] **Web: scene-background viewing wired** → Sprites tab now renders the 8-bit backgrounds; palette-bearing ones show immediately, and a 🎨 "scene palette…" picker borrows any other file's palette to colourise the palette-less ones (also fills gaps for partial palettes like `VG*`); grayscale fallback so they're never blank. Editing 8-bit backgrounds is guarded (4-bit quantiser); export still re-emits them verbatim.
 - [x] Decode MAP.HSQ world map → `tools/map_decoder.py` (320×152 tiles, regions, locations)
 - [x] Decode COMMAND.HSQ string table → `tools/command_decoder.py` (all 186 HSQ files classified)
 - [x] Decode HNM video format → `tools/hnm_decoder.py` (LZ frame decompression, BMP+WAV export)
@@ -274,11 +275,17 @@ python3 tools/condit_decompiler.py samples/CONDIT.HSQ --chains
 - [x] FREQ.HSQ identified — not a data table but a ~1.27 s **silent** 8-bit /
   22 222 Hz VOC calibration buffer ("Sample test to calc freq" + 28 224 × 0x80).
   No decoder needed; documented so it's not mistaken for game audio.
-- [x] `gamedata/AAAAAAAAAAA` characterised — a 5.84 MB **non-asset** blob:
-  placeholder name, NOT in the 262-file catalog, no HSQ/VOC magic, entropy 7.29,
-  noise-like (zero-crossing 0.47), no real strings, matches no asset
-  concatenation. A capture/scratch artifact bundled in "First Asset commit",
-  not a known game format — safe to ignore for the editor (kept for provenance).
+- [x] `gamedata/AAAAAAAAAAA` — **confirmed non-decodable** after a rigorous
+  multi-hypothesis pass (image @ widths 256/320/640, paletted, 8/16-bit audio,
+  embedded-magic + HSQ/zlib decompression at multiple offsets). 5.84 MB,
+  placeholder name, NOT in the 262-file catalog. **Decisive evidence**: lag-1
+  byte autocorrelation ≈ 0 *everywhere* (−0.03 incl. the header region) so it is
+  NOT image/audio/uncompressed (those have strong neighbour correlation); no
+  audio pitch (autocorr peak 0.08); uniform ~7.0-bit block entropy throughout
+  (only the trailing zero-pad differs); no magic, HSQ headers only at random
+  chance, zlib/HSQ decompress fail. High-entropy, byte-decorrelated data (an
+  encoded/compressed-with-unknown-scheme or capture/scratch artifact) — not a
+  known game format. Safe to ignore for the editor (kept for provenance).
 
 - [x] HERAD OPL2/AGD event parser verified against adplug's CheradPlayer
   (herad.cpp): adplug's current model does **not** fit Cryo's files (recovers

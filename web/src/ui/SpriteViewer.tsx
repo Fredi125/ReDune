@@ -99,6 +99,15 @@ function SpriteCell(props: {
   );
 }
 
+// Grayscale fallback so palette-less 8-bit scene backgrounds (DN*/DS*/DH*/...)
+// are still viewable before a real scene palette is applied.
+const GRAY256: Map<number, RGB> = new Map(Array.from({ length: 256 }, (_, i) => [i, [i, i, i] as RGB]));
+function mergePalettes(fill: Map<number, RGB>, top: Map<number, RGB>): Map<number, RGB> {
+  const m = new Map(fill);
+  for (const [k, v] of top) m.set(k, v);
+  return m;
+}
+
 export function SpriteViewer() {
   const [name, setName] = useState("");
   const [file, setFile] = useState<SpriteFile | null>(null);
@@ -109,6 +118,23 @@ export function SpriteViewer() {
   const replacedRef = useRef<Set<number>>(new Set());
   const [, setVer] = useState(0);
   const bump = () => setVer((v) => v + 1);
+  // External scene palette (for palette-less backgrounds): borrow another file's palette.
+  const [extPalette, setExtPalette] = useState<Map<number, RGB> | null>(null);
+  const [extPaletteName, setExtPaletteName] = useState("");
+  const extPalRef = useRef<HTMLInputElement>(null);
+  const loadExtPalette = async (f: File) => {
+    try {
+      const sf = loadSpriteFile(new Uint8Array(await f.arrayBuffer()));
+      if (sf.palette.size === 0) {
+        setError(`${f.name} has no palette to borrow`);
+        return;
+      }
+      setExtPalette(sf.palette);
+      setExtPaletteName(f.name);
+    } catch (e) {
+      setError(`Not a palette source: ${String(e)}`);
+    }
+  };
 
   const load = (n: string, bytes: Uint8Array) => {
     setName(n.replace(/\.[^.]+$/, ""));
@@ -136,6 +162,10 @@ export function SpriteViewer() {
     if (!file) return;
     const spr = spritesRef.current[idx];
     if (spr.width === 0 || spr.height === 0) return;
+    if (spr.depth === 8) {
+      setError("Editing 8-bit scene backgrounds isn't supported yet (the quantiser is 4-bit); export still re-emits them verbatim.");
+      return;
+    }
     try {
       const rgba = await imageFileToRGBA(f, spr.width, spr.height);
       const pixels = quantizeToSprite(rgba, spr.width, spr.height, file.palette, spr.paletteOffset);
@@ -185,10 +215,16 @@ export function SpriteViewer() {
     return () => clearInterval(id);
   }, [cycle, cycleSpeed, ranges.length]);
   const activeRanges = useMemo(() => ranges.filter((_, i) => !disabledRanges.has(i)), [ranges, disabledRanges]);
-  const livePalette = useMemo(
-    () => (file && cycle ? rotatePalette(file.palette, activeRanges, phase) : file?.palette ?? new Map()),
-    [file, cycle, activeRanges, phase],
-  );
+  // Base palette: the file's own when present (external fills any gaps, e.g.
+  // VG* partial palettes); for palette-less scene backgrounds, the external
+  // palette if loaded, else a grayscale fallback so the image is still visible.
+  const livePalette = useMemo(() => {
+    const own = file?.palette ?? new Map<number, RGB>();
+    let base: Map<number, RGB>;
+    if (own.size > 0) base = extPalette ? mergePalettes(extPalette, own) : own;
+    else base = extPalette ?? GRAY256;
+    return cycle ? rotatePalette(base, activeRanges, phase) : base;
+  }, [file, extPalette, cycle, activeRanges, phase]);
 
   const paletteEntries = useMemo(() => [...livePalette.entries()].sort((a, b) => a[0] - b[0]), [livePalette]);
   const inRange = useMemo(() => {
@@ -258,6 +294,11 @@ export function SpriteViewer() {
               <label className="muted">
                 <input type="checkbox" checked={opaque} onChange={(e) => setOpaque(e.target.checked)} /> opaque
               </label>
+              <button className="btn small" title="Borrow a palette from another file — colourises palette-less 8-bit scene backgrounds (DN*/DS*/DH*/…). Try INT02/PALAIS/VG01." onClick={() => extPalRef.current?.click()}>
+                🎨 {extPaletteName || "scene palette…"}
+              </button>
+              {extPalette && <button className="btn small" title="Clear borrowed palette" onClick={() => { setExtPalette(null); setExtPaletteName(""); }}>✕</button>}
+              <input ref={extPalRef} type="file" accept=".HSQ,.hsq" style={{ display: "none" }} onChange={(e) => e.target.files?.[0] && loadExtPalette(e.target.files[0])} />
               {ranges.length > 0 && (
                 <label className="muted" title={`${ranges.length} cyclable colour ramp(s) detected`}>
                   <input type="checkbox" checked={cycle} onChange={(e) => setCycle(e.target.checked)} /> ✨ cycle
@@ -271,7 +312,13 @@ export function SpriteViewer() {
             </div>
           }
         >
-          {paletteEntries.length > 0 && (
+          {file.palette.size === 0 && (
+            <div className="small muted" style={{ marginBottom: 8 }}>
+              No embedded palette — <b>8-bit scene background</b>.{" "}
+              {extPaletteName ? `Coloured with the palette from ${extPaletteName}.` : "Showing grayscale; click 🎨 to borrow a scene palette (e.g. INT02 / PALAIS / VG01) and colourise it."}
+            </div>
+          )}
+          {paletteEntries.length > 0 && file.palette.size > 0 && (
             <div className="row" style={{ gap: 2, marginBottom: 10 }}>
               {paletteEntries.map(([idx, [r, g, b]]) => (
                 <span
