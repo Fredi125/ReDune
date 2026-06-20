@@ -267,6 +267,10 @@ export interface HeradLoad {
   info: HeradInfo;
   midi: Uint8Array;
   instruments: HeradInstrument[];
+  /** Decompressed HERAD bytes (the encoder's input for re-export). */
+  data: Uint8Array;
+  /** True if the source was HSQ-compressed (re-compress on export). */
+  wasHsq: boolean;
 }
 
 /**
@@ -334,7 +338,92 @@ export function parseInstruments(data: Uint8Array, instOffset: number): HeradIns
 
 /** Load a HERAD file (decompressing HSQ if needed) and produce its MIDI + instruments. */
 export function loadHerad(raw: Uint8Array, name = ""): HeradLoad {
-  const data = isHsq(raw) ? hsqDecompress(raw) : raw;
+  const wasHsq = isHsq(raw);
+  const data = wasHsq ? hsqDecompress(raw) : raw;
   const info = parseHerad(data, name);
-  return { info, midi: exportMidi(data, name), instruments: parseInstruments(data, info.instOffset) };
+  return { info, midi: exportMidi(data, name), instruments: parseInstruments(data, info.instOffset), data, wasHsq };
+}
+
+// ---------------------------------------------------------------------------
+// Re-encoder (recompiler): rebuild a HERAD file from its parts. Byte-identical
+// for an unedited file (reuses the verbatim header + track slices + instrument
+// block); supports replacing track bytes and/or patching instrument records.
+// ---------------------------------------------------------------------------
+
+/**
+ * Reassemble a HERAD file. With no `opts` the output is byte-identical to the
+ * decompressed original. `opts.tracks` replaces per-track event bytes (offsets
+ * and instOffset are recomputed); `opts.instrumentBlock` replaces the trailing
+ * instrument block. The header (instOffset @0, track table @2.., nInstruments
+ * @0x2C) is taken verbatim and only those fields are repatched, so any unknown
+ * header/padding bytes survive.
+ */
+export function encodeHerad(orig: Uint8Array, info: HeradInfo, opts?: { tracks?: Uint8Array[]; instrumentBlock?: Uint8Array }): Uint8Array {
+  if (info.trackOffsets.length === 0) return orig.slice();
+  const firstTrack = info.trackOffsets[0];
+  const tracks = opts?.tracks ?? info.tracks.map((t) => t.data);
+  const instBlock = opts?.instrumentBlock ?? orig.slice(info.instOffset);
+
+  // New track offset table (tracks laid out contiguously after the header).
+  const newOffsets: number[] = [];
+  let cur = firstTrack;
+  for (const t of tracks) {
+    newOffsets.push(cur);
+    cur += t.length;
+  }
+  const instOffset = cur;
+
+  const out = new Uint8Array(instOffset + instBlock.length);
+  out.set(orig.subarray(0, firstTrack), 0); // verbatim header (META @0x2C etc. preserved)
+  // Repatch only the layout-dependent fields: instOffset @0 and the track table
+  // @2.. (these shift when track sizes change). Everything else stays verbatim.
+  out[0] = instOffset & 0xff;
+  out[1] = (instOffset >> 8) & 0xff;
+  for (let i = 0; i < newOffsets.length; i++) {
+    out[(i + 1) * 2] = newOffsets[i] & 0xff;
+    out[(i + 1) * 2 + 1] = (newOffsets[i] >> 8) & 0xff;
+  }
+  // body
+  let p = firstTrack;
+  for (const t of tracks) {
+    out.set(t, p);
+    p += t.length;
+  }
+  out.set(instBlock, instOffset);
+  return out;
+}
+
+/**
+ * Patch one 40-byte instrument record (in a copy of the block) from an edited
+ * HeradInstrument, writing only the OPL parameter bits parseInstruments reads
+ * and leaving every other byte/bit untouched — so an unedited write is exact.
+ */
+export function writeInstrument(block: Uint8Array, index: number, inst: HeradInstrument): Uint8Array {
+  const out = block.slice();
+  const o = index * HERAD_INST_SIZE;
+  if (o + HERAD_INST_SIZE > out.length) return out;
+  const lo4 = (b: number, v: number) => (b & 0xf0) | (v & 0x0f);
+  const lo3 = (b: number, v: number) => (b & 0xf8) | (v & 0x07);
+  const lo6 = (b: number, v: number) => (b & 0xc0) | (v & 0x3f);
+  const lo2 = (b: number, v: number) => (b & 0xfc) | (v & 0x03);
+  out[o] = inst.mode & 0xff;
+  out[o + 3] = lo4(out[o + 3], inst.modMul);
+  out[o + 4] = lo3(out[o + 4], inst.feedback);
+  out[o + 5] = lo4(out[o + 5], inst.modA);
+  out[o + 6] = lo4(out[o + 6], inst.modS);
+  out[o + 8] = lo4(out[o + 8], inst.modD);
+  out[o + 9] = lo4(out[o + 9], inst.modR);
+  out[o + 10] = lo6(out[o + 10], inst.modOut);
+  out[o + 14] = inst.con & 0xff;
+  out[o + 16] = lo4(out[o + 16], inst.carMul);
+  out[o + 18] = lo4(out[o + 18], inst.carA);
+  out[o + 19] = lo4(out[o + 19], inst.carS);
+  out[o + 21] = lo4(out[o + 21], inst.carD);
+  out[o + 22] = lo4(out[o + 22], inst.carR);
+  out[o + 23] = lo6(out[o + 23], inst.carOut);
+  out[o + 28] = lo2(out[o + 28], inst.modWave);
+  out[o + 29] = lo2(out[o + 29], inst.carWave);
+  out[o + 30] = inst.modOutVel & 0xff;
+  out[o + 31] = inst.carOutVel & 0xff;
+  return out;
 }

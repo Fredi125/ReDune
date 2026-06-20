@@ -1,7 +1,8 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { loadHerad, parseTrackEvents, type HeradInstrument, type HeradLoad } from "../codecs/herad";
+import { encodeHerad, loadHerad, parseTrackEvents, writeInstrument, type HeradInstrument, type HeradLoad } from "../codecs/herad";
+import { hsqCompress } from "../codecs/compression";
 import { midiToFreq, oplWaves, playFmNote } from "../audio/heradFm";
-import { downloadBytes, LoadBar, Panel, Tag } from "./shared";
+import { downloadBytes, hex, LoadBar, NumberField, Panel, Tag } from "./shared";
 import { useIncoming } from "./routing";
 
 const FMT_LABEL: Record<string, string> = { OPL2: "OPL2 / AdLib", AGD: "Tandy / PCjr", M32: "Roland MT-32" };
@@ -24,17 +25,56 @@ export function HeradStudio() {
   const [playing, setPlaying] = useState(false);
   const ctxRef = useRef<AudioContext | null>(null);
   const stopTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const [insts, setInsts] = useState<HeradInstrument[]>([]);
+  const [selInst, setSelInst] = useState(0);
+  const [edited, setEdited] = useState(false);
 
   const load = (n: string, bytes: Uint8Array) => {
     stop();
     setError("");
     try {
-      setLoaded(loadHerad(bytes, n));
+      const l = loadHerad(bytes, n);
+      setLoaded(l);
+      setInsts(l.instruments.map((x) => ({ ...x })));
+      setSelInst(0);
+      setEdited(false);
       setName(n);
     } catch (e) {
       setLoaded(null);
       setError(String(e));
     }
+  };
+
+  const setInstField = (field: keyof HeradInstrument, value: number) => {
+    setInsts((prev) => prev.map((ins, i) => (i === selInst ? { ...ins, [field]: value } : ins)));
+    setEdited(true);
+  };
+
+  // Re-encode (byte-identical when unedited) with the edited instrument patches,
+  // re-compressing to HSQ if the source was. This closes the music mod loop.
+  const exportFile = () => {
+    if (!loaded) return;
+    let block: Uint8Array = loaded.data.slice(loaded.info.instOffset);
+    insts.forEach((ins, i) => {
+      block = writeInstrument(block, i, ins);
+    });
+    const rebuilt = encodeHerad(loaded.data, loaded.info, { instrumentBlock: block });
+    const out = loaded.wasHsq ? hsqCompress(rebuilt) : rebuilt;
+    downloadBytes(name || "music.hsq", out);
+  };
+
+  const previewInst = () => {
+    const ins = insts[selInst];
+    if (!ins) return;
+    stop();
+    const ctx = new AudioContext();
+    ctxRef.current = ctx;
+    const master = ctx.createGain();
+    master.gain.value = 0.5;
+    master.connect(ctx.destination);
+    const t0 = ctx.currentTime + 0.05;
+    playFmNote(ctx, master, oplWaves(ctx), ins, midiToFreq(60), 110, t0, t0 + 0.6);
+    stopTimer.current = setTimeout(stop, 1000);
   };
 
   const trackStats = useMemo(() => {
@@ -65,7 +105,6 @@ export function HeradStudio() {
     master.gain.value = 0.42;
     master.connect(ctx.destination);
     const waves = oplWaves(ctx);
-    const insts = loaded.instruments;
     const t0 = ctx.currentTime + 0.08;
     let voices = 0;
     let maxEnd = t0;
@@ -127,6 +166,8 @@ export function HeradStudio() {
               <input type="number" min={40} max={300} value={bpm} style={{ width: 56 }} onChange={(e) => setBpm(Math.max(40, +e.target.value || 120))} />
               <button className="btn primary" onClick={playing ? stop : play}>{playing ? "■ Stop" : "▶ Play"}</button>
               <button className="btn" onClick={() => downloadBytes(name.replace(/\.[^.]+$/, "") + ".mid", loaded.midi)}>⤓ MIDI</button>
+              {edited && <Tag color="var(--amber)">edited</Tag>}
+              <button className="btn primary" onClick={exportFile} title="Re-encode (byte-identical when unedited) and re-compress to HSQ">⤓ Export {loaded.wasHsq ? ".HSQ" : "file"}</button>
             </div>
           }
         >
@@ -155,6 +196,46 @@ export function HeradStudio() {
               ))}
             </tbody>
           </table>
+          {insts.length > 0 && (
+            <div style={{ marginTop: 12, borderTop: "1px solid var(--border)", paddingTop: 10 }}>
+              <div className="row small" style={{ marginBottom: 8 }}>
+                <b>FM instrument editor</b>
+                <label className="muted">patch</label>
+                <select value={selInst} onChange={(e) => setSelInst(+e.target.value)}>
+                  {insts.map((_, i) => (<option key={i} value={i}>#{i}</option>))}
+                </select>
+                <button className="btn small" onClick={previewInst}>♪ test note</button>
+                <span className="muted small">edits feed ▶ Play and ⤓ Export</span>
+              </div>
+              {insts[selInst] && (
+                <div className="row" style={{ gap: 16, flexWrap: "wrap" }}>
+                  <div>
+                    <div className="small muted">routing</div>
+                    <NumberField label="feedback (0-7)" value={insts[selInst].feedback} max={7} onChange={(v) => setInstField("feedback", v)} />
+                    <NumberField label="con (FM>0/add)" value={insts[selInst].con} max={127} onChange={(v) => setInstField("con", v)} />
+                  </div>
+                  <div>
+                    <div className="small muted">modulator</div>
+                    <NumberField label="mult (0-15)" value={insts[selInst].modMul} max={15} onChange={(v) => setInstField("modMul", v)} />
+                    <NumberField label="level (0-63)" value={insts[selInst].modOut} max={63} onChange={(v) => setInstField("modOut", v)} />
+                    <NumberField label="wave (0-3)" value={insts[selInst].modWave} max={3} onChange={(v) => setInstField("modWave", v)} />
+                    <NumberField label="A/D/S/R" value={insts[selInst].modA} max={15} onChange={(v) => setInstField("modA", v)} />
+                  </div>
+                  <div>
+                    <div className="small muted">carrier</div>
+                    <NumberField label="mult (0-15)" value={insts[selInst].carMul} max={15} onChange={(v) => setInstField("carMul", v)} />
+                    <NumberField label="level (0-63)" value={insts[selInst].carOut} max={63} onChange={(v) => setInstField("carOut", v)} />
+                    <NumberField label="wave (0-3)" value={insts[selInst].carWave} max={3} onChange={(v) => setInstField("carWave", v)} />
+                    <NumberField label="A/D/S/R" value={insts[selInst].carA} max={15} onChange={(v) => setInstField("carA", v)} />
+                  </div>
+                </div>
+              )}
+              <div className="small muted" style={{ marginTop: 6 }}>
+                Patch #{selInst} writes back to the 40-byte record at {hex(loaded.info.instOffset + selInst * 40)}; unedited
+                fields and unknown bytes are preserved (byte-identical round-trip verified).
+              </div>
+            </div>
+          )}
           <div className="small muted" style={{ marginTop: 10 }}>
             <b>▶ Play</b> renders the decoded <b>OPL2 instrument patches</b> through a 2-operator WebAudio FM synth
             (real waveforms, MULT, TL, ADSR and FM/additive routing per patch) — close to the AdLib timbre, though not a

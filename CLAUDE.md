@@ -202,6 +202,16 @@ python3 tools/condit_decompiler.py samples/CONDIT.HSQ --chains
 ### Medium Priority
 - [ ] In-browser OPL2/MT-32 synthesis for true HERAD playback (currently MIDI export only)
 
+- [x] HERAD **re-encoder / recompiler** → `encodeHerad` + `writeInstrument`
+  (`web/src/codecs/herad.ts`) and `encode_herad` (`tools/herad_decoder.py`):
+  rebuilds the file from header + verbatim track slices + instrument block,
+  **byte-identical** for all 30 files (OPL2/AGD/M32, both Python & TS). The
+  metadata word @0x2C is NOT instrument count (left verbatim); only inst_offset
+  @0 + the track table @2.. are repatched. Music tab gains an FM-patch editor
+  (feedback/con/mult/level/wave/ADSR per operator, test-note preview) + "⤓
+  Export .HSQ" that writes edited patches back and re-compresses — closes the
+  music mod loop.
+
 - [x] True MAP globe projection → `MapViewer` globe mode wraps the **real
   MAP.HSQ terrain** onto the sphere (GLOBDATA longitude ramps + TABLAT
   foreshortening + limb shading) with a Dune desert palette (`map.ts planetColor`),

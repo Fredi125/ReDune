@@ -217,6 +217,41 @@ def parse_herad(data: bytes, filepath: str = '') -> dict:
     }
 
 
+def encode_herad(orig: bytes, info: dict, tracks=None, inst_block=None) -> bytes:
+    """Reassemble a HERAD file from its parts (inverse of parse_herad).
+
+    With no overrides the output is byte-identical to the decompressed original
+    (header is kept verbatim; only the layout-dependent fields are repatched:
+    inst_offset @0 and the track-offset table @2..). Pass ``tracks`` (a list of
+    per-track event byte strings) and/or ``inst_block`` to rebuild after edits;
+    track offsets and inst_offset are recomputed. The metadata word @0x2C is
+    NOT instrument count (it is left untouched).
+    """
+    if not info['track_offsets']:
+        return bytes(orig)
+    first_track = info['track_offsets'][0]
+    if tracks is None:
+        tracks = [t['data'] for t in info['tracks']]
+    if inst_block is None:
+        inst_block = orig[info['inst_offset']:]
+
+    new_offsets = []
+    cur = first_track
+    for t in tracks:
+        new_offsets.append(cur)
+        cur += len(t)
+    inst_offset = cur
+
+    out = bytearray(orig[:first_track])  # verbatim header
+    struct.pack_into('<H', out, 0, inst_offset)
+    for i, off in enumerate(new_offsets):
+        struct.pack_into('<H', out, (i + 1) * 2, off)
+    for t in tracks:
+        out += t
+    out += inst_block
+    return bytes(out)
+
+
 def read_vlq(data: bytes, pos: int) -> tuple:
     """Read a MIDI variable-length quantity. Returns (value, new_pos)."""
     value = 0

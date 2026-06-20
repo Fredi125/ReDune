@@ -10,7 +10,7 @@ import { readFileSync, existsSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { dirname, resolve, join } from "node:path";
 
-import { hsqDecompress, hsqCompress, f7Decompress, f7Compress } from "../src/codecs/compression";
+import { hsqDecompress, hsqCompress, f7Decompress, f7Compress, isHsq } from "../src/codecs/compression";
 import { loadCondit, conditEntries, compileExpr, bytesToHex } from "../src/codecs/condit";
 import { DuneSave } from "../src/codecs/save";
 import { loadSpriteFile, decodeSprite, looksLikeSprite, encodeSpriteFile } from "../src/codecs/sprite";
@@ -22,7 +22,7 @@ import { parseDat, extractFile, buildDat, rebuildDat } from "../src/codecs/dat";
 import { loadGradientTables, loadGlobe } from "../src/codecs/globdata";
 import { parseTablat } from "../src/codecs/tablat";
 import { HnmFile } from "../src/codecs/hnm";
-import { loadHerad, parseTrackEvents } from "../src/codecs/herad";
+import { loadHerad, parseTrackEvents, parseHerad, encodeHerad, writeInstrument, parseInstruments } from "../src/codecs/herad";
 import { decodeVoc, encodeVoc, vocToWav, wavToSamples } from "../src/codecs/voc";
 import { heatmapColor, detectMapWidth, planetColor } from "../src/codecs/map";
 import { hsqDecompress as hsqDec } from "../src/codecs/compression";
@@ -664,6 +664,38 @@ for (const f of ["ARRAKIS.HSQ", "ARRAKIS.AGD"]) {
     }
   const balanced = on >= off && on - off <= L.info.tracks.length && on > 1000;
   ok(`HERAD ${f} note on/off balanced`, balanced, `on=${on} off=${off} tracks=${L.info.tracks.length}`);
+}
+
+// HERAD re-encoder: byte-identical rebuild across all variants + instrument patch
+console.log("\nHERAD re-encoder:");
+for (const f of ["ARRAKIS.HSQ", "ARRAKIS.AGD", "ARRAKIS.M32", "WATER.HSQ", "SIETCHM.AGD"]) {
+  const path = join(GD, f);
+  if (!existsSync(path)) {
+    skip(`HERAD encode ${f}`, "file missing");
+    continue;
+  }
+  const raw = read(path);
+  const data = isHsq(raw) ? hsqDecompress(raw) : raw;
+  const info = parseHerad(data, f);
+  const rebuilt = encodeHerad(data, info);
+  ok(`HERAD ${f} re-encode byte-identical`, eq(rebuilt, data), `${data.length}B`);
+
+  // Instrument patch: writing parsed instruments back is a no-op; one edited
+  // field changes exactly its bits and re-parses to the new value.
+  if (info.instOffset > 0 && info.instOffset < data.length) {
+    const block = data.slice(info.instOffset);
+    const insts = parseInstruments(data, info.instOffset);
+    if (insts.length > 0) {
+      const same = writeInstrument(block, 0, insts[0]);
+      ok(`HERAD ${f} instrument write is lossless`, eq(same, block));
+      const edited = { ...insts[0], modMul: (insts[0].modMul + 1) & 0x0f };
+      const patched = writeInstrument(block, 0, edited);
+      const newMul = patched[3] & 0x0f; // o+3 low nibble = modMul
+      const carOutKept = (patched[23] & 0x3f) === insts[0].carOut; // other field untouched
+      const onlyExpectedBytesChanged = patched.every((v, i) => i === 3 || v === block[i]);
+      ok(`HERAD ${f} instrument edit round-trips`, newMul === edited.modMul && carOutKept && onlyExpectedBytesChanged, `modMul ${insts[0].modMul}→${newMul}`);
+    }
+  }
 }
 
 // ---------------------------------------------------------------------------
