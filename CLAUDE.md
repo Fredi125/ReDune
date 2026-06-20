@@ -43,9 +43,9 @@ dune1992-re/
 ├── ui/                 ← Original single-file React save explorer (snapshot)
 │   └── save_explorer.jsx   ← React save file explorer
 ├── web/                ← Web Asset Studio (Vite + React + TypeScript)
-│   ├── src/codecs/         ← TS ports: compression, sprite, sal, text, voc, map, font, dialogue, condit, save, globdata, dat, hnm, herad, tablat (validated vs Python)
-│   ├── src/ui/             ← Sprites, Rooms, Map, Font, Text, Audio, Music, Video, Story, SaveEditor, ConditStudio, Archive
-│   └── test/codecs.test.ts ← Byte-for-byte cross-check against lib/ using gamedata (53 checks)
+│   ├── src/codecs/         ← TS ports: compression, sprite, sal, text, voc, map, font, dialogue, condit, conditVM, save, globdata, dat, hnm, herad, tablat, palette (validated vs Python)
+│   ├── src/ui/             ← Sprites, Rooms, Map, Font, Text, Audio, Music, Video, Story, Play, SaveEditor, ConditStudio, Archive
+│   └── test/codecs.test.ts ← Byte-for-byte cross-check against lib/ using gamedata (83 checks)
 ├── docs/               ← Technical documentation
 │   ├── save_format.md      ← Complete save file map
 │   ├── condit_vm.md        ← CONDIT VM architecture
@@ -200,6 +200,13 @@ python3 tools/condit_decompiler.py samples/CONDIT.HSQ --chains
 ### Medium Priority
 - [ ] In-browser OPL2/MT-32 synthesis for true HERAD playback (currently MIDI export only)
 - [ ] True MAP globe projection (via TABLAT) instead of the row-major heatmap
+
+- [x] CONDIT VM **evaluator** (runtime, not just decompiler) → `web/src/codecs/conditVM.ts`
+  (`evalCondit`/`evalBytecode`, faithful sub_C266 stack machine) + new **Play tab**:
+  load DIALOGUE+CONDIT(+PHRASE), edit game state (GameStage + flags), and each
+  dialogue option shows AVAILABLE/blocked live as the real condition VM evaluates
+  it against the state. Verified: all 713 entries evaluate; intro-only lines
+  (`GameStage == 0x00`) gate off and late-game lines (`>u 0x2F`) unlock.
 
 - [x] Palette colour-cycling → `web/src/codecs/palette.ts` (`detectCycleRanges`
   finds smooth contiguous ramps; `rotatePalette` rotates them) + animated

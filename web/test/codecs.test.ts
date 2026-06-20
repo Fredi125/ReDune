@@ -29,6 +29,7 @@ import { hsqDecompress as hsqDec } from "../src/codecs/compression";
 import { detectAssetType } from "../src/ui/detect";
 import { detectCycleRanges, rotatePalette } from "../src/codecs/palette";
 import type { RGB } from "../src/codecs/sprite";
+import { evalExpr, evalCondit, type VarStore } from "../src/codecs/conditVM";
 
 const here = dirname(fileURLToPath(import.meta.url));
 const ROOT = resolve(here, "..", "..");
@@ -786,6 +787,44 @@ console.log("\nPalette colour-cycling:");
     ok("rotatePalette preserves palette index set on a real sprite", sameKeys);
   } else {
     skip("palette cycle on real sprite", "no sprite present");
+  }
+}
+
+// ---------------------------------------------------------------------------
+console.log("\nCONDIT VM evaluator:");
+{
+  const store = (o: Record<number, number>): VarStore => new Map(Object.entries(o).map(([k, v]) => [+k, v]));
+  // GameStage is DS var 0x2A; SietchBitfield1 is 0x10.
+  ok("EQ true/false", evalExpr("byte[GameStage] == 0x50", store({ 0x2a: 0x50 })) && !evalExpr("byte[GameStage] == 0x50", store({ 0x2a: 0x10 })));
+  ok("unsigned GT", evalExpr("byte[GameStage] >u 0x14", store({ 0x2a: 0x20 })) && !evalExpr("byte[GameStage] >u 0x14", store({ 0x2a: 0x05 })));
+  ok("NE", evalExpr("word[SietchBitfield1] != 0x00", store({ 0x10: 4 })) && !evalExpr("word[SietchBitfield1] != 0x00", store({ 0x10: 0 })));
+  // Logical AND: both clauses must hold.
+  const andExpr = "(byte[GameStage] == 0x50) & (word[SietchBitfield1] != 0x00)";
+  ok("AND gating", evalExpr(andExpr, store({ 0x2a: 0x50, 0x10: 4 })) && !evalExpr(andExpr, store({ 0x2a: 0x50, 0x10: 0 })) && !evalExpr(andExpr, store({ 0x2a: 0x10, 0x10: 4 })));
+  // Range check via subtraction (entry #16 pattern): (GameStage - 0x1C) <u 0x05.
+  const rng = "byte[GameStage] - 0x1C <u 0x05";
+  ok("arithmetic range check", evalExpr(rng, store({ 0x2a: 0x1e })) && !evalExpr(rng, store({ 0x2a: 0x30 })));
+
+  // Real CONDIT file: empty entry is always true; every entry evaluates without
+  // throwing; and gating actually responds to GameStage.
+  const cpath = join(GD, "CONDIT.HSQ");
+  if (existsSync(cpath)) {
+    const cf = loadCondit(read(cpath));
+    let threw = 0;
+    let responds = 0;
+    for (let i = 0; i < cf.offsets.length; i++) {
+      try {
+        const a = evalCondit(cf, i, store({ 0x2a: 0x00 }));
+        const b = evalCondit(cf, i, store({ 0x2a: 0x50 }));
+        if (a !== b) responds++;
+      } catch {
+        threw++;
+      }
+    }
+    ok("VM evaluates all 713 entries without error", threw === 0, `${threw} threw`);
+    ok("some entries gate on GameStage", responds > 0, `${responds} entries change with GameStage`);
+  } else {
+    skip("CONDIT VM on real file", "CONDIT.HSQ missing");
   }
 }
 

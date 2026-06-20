@@ -20,6 +20,7 @@ export type TabId =
   | "music"
   | "video"
   | "story"
+  | "play"
   | "save"
   | "condit"
   | "archive";
@@ -106,6 +107,7 @@ export const TAB_LABELS: Record<TabId, string> = {
   music: "Music",
   video: "Video",
   story: "Story",
+  play: "Play",
   save: "Save editor",
   condit: "CONDIT studio",
   archive: "Archive",

@@ -7,6 +7,7 @@ import { TextStudio } from "./ui/TextStudio";
 import { MapViewer } from "./ui/MapViewer";
 import { AudioStudio } from "./ui/AudioStudio";
 import { StoryStudio } from "./ui/StoryStudio";
+import { PlayRuntime } from "./ui/PlayRuntime";
 import { FontViewer } from "./ui/FontViewer";
 import { DatStudio } from "./ui/DatStudio";
 import { HnmPlayer } from "./ui/HnmPlayer";
@@ -15,7 +16,7 @@ import { ErrorBoundary, Panel } from "./ui/shared";
 import { RoutedProvider, type IncomingFile } from "./ui/routing";
 import { detectAssetType, TAB_LABELS } from "./ui/detect";
 
-type Tab = "sprites" | "rooms" | "map" | "font" | "text" | "audio" | "music" | "video" | "story" | "save" | "condit" | "archive" | "about";
+type Tab = "sprites" | "rooms" | "map" | "font" | "text" | "audio" | "music" | "video" | "story" | "play" | "save" | "condit" | "archive" | "about";
 
 const TABS: { id: Tab; label: string }[] = [
   { id: "sprites", label: "◳ Sprites" },
@@ -27,6 +28,7 @@ const TABS: { id: Tab; label: string }[] = [
   { id: "music", label: "♫ Music" },
   { id: "video", label: "▶ Video" },
   { id: "story", label: "✦ Story" },
+  { id: "play", label: "▷ Play" },
   { id: "save", label: "⚔ Save editor" },
   { id: "condit", label: "⎔ CONDIT studio" },
   { id: "archive", label: "🗜 Archive" },
@@ -79,6 +81,11 @@ function About() {
             <b>Story</b> — cross-reference <code>DIALOGUE.HSQ</code> × <code>CONDIT.HSQ</code> × <code>PHRASE*.HSQ</code>:
             see every dialogue option with its gating condition and spoken line; edit records and re-export
             <code>DIALOGUE.HSQ</code>.
+          </li>
+          <li>
+            <b>Play</b> — the runtime: load <code>DIALOGUE</code> + <code>CONDIT</code> (+ <code>PHRASE</code>) and the
+            real CONDIT VM evaluates each dialogue option's gating condition against an editable game state — change
+            <b>GameStage</b> or a flag and watch lines unlock.
           </li>
           <li>
             <b>Save editor</b> — load <code>DUNE*.SAV</code>, edit globals / troops / sietches / NPCs / smugglers,
@@ -208,6 +215,7 @@ export function App() {
           {tab === "music" && <HeradStudio />}
           {tab === "video" && <HnmPlayer />}
           {tab === "story" && <StoryStudio />}
+          {tab === "play" && <PlayRuntime />}
           {tab === "save" && <SaveEditor />}
           {tab === "condit" && <ConditStudio />}
           {tab === "archive" && <DatStudio />}
