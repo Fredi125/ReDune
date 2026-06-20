@@ -1124,6 +1124,19 @@ TIME_PASSED_VAR = 0x2C32A
 INTRO_SCRIPT_TABLE = 0x10337      # intro cutscene playlist (load/play routine tuples)
 IRULAN_SUBTITLE_TABLE = 0x22A58   # Irulan intro subtitles, HNM-frame-numbered, -1 term
 
+# The Irulan intro subtitle timeline (verified, DNCDPRG_RECENT.ASM @0x22A58):
+# IRULAN.HNM frame numbers at which a subtitle strip is shown / cleared. The
+# engine alternates show/clear as it walks the list ((ptr-base)/4 & 1), syncing
+# to the HNM frame counter (0x2D098). The IRUL1..IRUL9.HSQ strips are the 8-bit
+# subtitle text images (e.g. IRUL1 = "A beginning..."); they are palette-less and
+# render with IRULAN.HNM's own palette.
+IRULAN_SUBTITLE_FRAMES = [
+    119, 137, 138, 173, 186, 238, 248, 269, 270, 305, 314, 338, 348, 358, 360, 388,
+    389, 415, 425, 460, 470, 518, 528, 571, 576, 604, 605, 659, 660, 685, 693, 744,
+    746, 757, 761, 818, 827, 866, 875, 945, 950, 1000, 1012, 1042, 1044, 1075, 1085, 1119,
+    1120, 1142, 1147, 1169, 1172, 1214, 1226, 1259, 1266, 1285, 1294, 1315,
+]
+
 CS1_FUNCTIONS = {
     0x093F: "LoadSceneSequenceData",
     0x0945: "SetSceneSequenceOffset",
