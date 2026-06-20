@@ -190,6 +190,66 @@ def decode_section_pixels(section: dict) -> bytearray:
     )
 
 
+def encode_packbits(pixels: bytes) -> bytes:
+    """Compress raw pixels to LOP PackBits (inverse of decode_packbits).
+
+    RLE run R (2..129) -> [257-R][value]; literal run L (1..128) -> [L-1][bytes].
+    Not byte-identical to the game's exact stream (PackBits is non-unique), but
+    decode_packbits(encode_packbits(px)) == px.
+    """
+    out = bytearray()
+    i = 0
+    n = len(pixels)
+    while i < n:
+        run = 1
+        while i + run < n and pixels[i + run] == pixels[i] and run < 129:
+            run += 1
+        if run >= 2:
+            out.append(257 - run)
+            out.append(pixels[i])
+            i += run
+        else:
+            start = i
+            lit = 0
+            while i < n and lit < 128:
+                if i + 1 < n and pixels[i + 1] == pixels[i]:
+                    break  # let the next RLE run handle the repeat
+                i += 1
+                lit += 1
+            out.append(lit - 1)
+            out += pixels[start:start + lit]
+    return bytes(out)
+
+
+def raw_sections(data: bytes, header: dict) -> list:
+    """Slice a LOP file into its raw section byte-strings (for encode_lop)."""
+    offs = header['section_offsets']
+    out = []
+    for i in range(SECTION_COUNT):
+        start = FILE_HEADER_SIZE + offs[i]
+        end = FILE_HEADER_SIZE + offs[i + 1] if i + 1 < SECTION_COUNT else len(data)
+        if 0 <= start <= len(data) and start <= end <= len(data):
+            out.append(data[start:end])
+    return out
+
+
+def encode_lop(orig: bytes, sections: list) -> bytes:
+    """Reassemble a LOP file from raw section byte-strings (inverse of the header
+    parse). Byte-identical when ``sections`` are the verbatim slices; the 24-byte
+    header (marker + padding) is preserved and only the offset table @4 is
+    repatched.
+    """
+    out = bytearray(orig[:FILE_HEADER_SIZE])
+    cur = 0
+    for i in range(SECTION_COUNT):
+        struct.pack_into('<I', out, 4 + i * 4, cur)
+        if i < len(sections):
+            cur += len(sections[i])
+    for s in sections:
+        out += s
+    return bytes(out)
+
+
 # =============================================================================
 # DISPLAY MODES
 # =============================================================================

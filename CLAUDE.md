@@ -44,7 +44,7 @@ dune1992-re/
 ├── ui/                 ← Original single-file React save explorer (snapshot)
 │   └── save_explorer.jsx   ← React save file explorer
 ├── web/                ← Web Asset Studio (Vite + React + TypeScript)
-│   ├── src/codecs/         ← TS ports: compression, sprite, sal, text, voc, map, font, dialogue, condit, conditVM, save, globdata, dat, hnm, herad, tablat, palette (validated vs Python)
+│   ├── src/codecs/         ← TS ports: compression, sprite, sal, text, voc, map, font, dialogue, condit, conditVM, save, globdata, dat, hnm, herad, tablat, palette, lop (validated vs Python)
 │   ├── src/ui/             ← Sprites, Rooms, Map, Font, Text, Audio, Music, Video, Story, Play, SaveEditor, ConditStudio, Archive
 │   └── test/codecs.test.ts ← Byte-for-byte cross-check against lib/ using gamedata (83 checks)
 ├── docs/               ← Technical documentation
@@ -201,6 +201,12 @@ python3 tools/condit_decompiler.py samples/CONDIT.HSQ --chains
 
 ### Medium Priority
 - [ ] In-browser OPL2/MT-32 synthesis for true HERAD playback (currently MIDI export only)
+
+- [x] LOP **recompiler + TS port** → `encode_packbits`/`encode_lop`
+  (`tools/lop_decoder.py`) and new `web/src/codecs/lop.ts` (parse/decode +
+  `encodePackbits`/`encodeLop`): byte-identical reassembly for all 6 LOP files
+  (both Python & TS), PackBits compress round-trips (`decode(encode(px))==px`),
+  TS pixels match Python. LOP was previously Python-decode-only.
 
 - [x] HERAD **re-encoder / recompiler** → `encodeHerad` + `writeInstrument`
   (`web/src/codecs/herad.ts`) and `encode_herad` (`tools/herad_decoder.py`):

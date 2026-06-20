@@ -25,6 +25,7 @@ import { HnmFile } from "../src/codecs/hnm";
 import { loadHerad, parseTrackEvents, parseHerad, encodeHerad, writeInstrument, parseInstruments } from "../src/codecs/herad";
 import { decodeVoc, encodeVoc, vocToWav, wavToSamples } from "../src/codecs/voc";
 import { heatmapColor, detectMapWidth, planetColor } from "../src/codecs/map";
+import { parseLop, encodeLop, decodePackbits, encodePackbits } from "../src/codecs/lop";
 import { hsqDecompress as hsqDec } from "../src/codecs/compression";
 import { detectAssetType } from "../src/ui/detect";
 import { detectCycleRanges, rotatePalette } from "../src/codecs/palette";
@@ -421,6 +422,47 @@ console.log("\nDNCHAR font:");
         skip("font vs Python", String(e));
       }
     } else skip("font vs Python", "python3 unavailable");
+  }
+}
+
+// ---------------------------------------------------------------------------
+// LOP animation: byte-identical reassembly + PackBits round-trip + Python parity
+// ---------------------------------------------------------------------------
+console.log("\nLOP animation:");
+{
+  const lopFiles = ["SIET.LOP", "PALACE.LOP", "MNT1.LOP"].map((f) => join(GD, f)).filter((p) => existsSync(p));
+  for (const path of lopFiles) {
+    const f = path.split("/").pop()!;
+    const raw = read(path);
+    const lop = parseLop(raw);
+    const rebuilt = encodeLop(lop);
+    ok(`LOP ${f} re-encode byte-identical`, eq(rebuilt, lop.data), `${lop.data.length}B, ${lop.sections.length} sections`);
+    let pkOk = true;
+    for (const s of lop.sections) {
+      const px = decodePackbits(s.pixelData, s.width, s.height);
+      const round = decodePackbits(encodePackbits(px), s.width, s.height);
+      if (!eq(round, px)) pkOk = false;
+    }
+    ok(`LOP ${f} PackBits round-trips`, pkOk);
+  }
+  if (lopFiles.length === 0) skip("LOP", "no .LOP files present");
+  else if (PY) {
+    // first decoded section's pixel checksum must match the Python decoder
+    try {
+      const path = lopFiles[0];
+      const lop = parseLop(read(path));
+      const s = lop.sections[0];
+      const px = decodePackbits(s.pixelData, s.width, s.height);
+      let sum = 0;
+      for (const v of px) sum = (sum + v) & 0xffffffff;
+      py(
+        `import json,sys;sys.path.insert(0,'tools')\nfrom lop_decoder import parse_lop_header, parse_section, decode_packbits, FILE_HEADER_SIZE, SECTION_COUNT\nd=open(${JSON.stringify(path)},'rb').read()\nh=parse_lop_header(d)\nnxt=h['section_offsets'][1] if SECTION_COUNT>1 else None\ns=parse_section(d,FILE_HEADER_SIZE,h['section_offsets'][0],nxt,len(d))\npx=decode_packbits(s['pixel_data'],s['width'],s['height'],s['mode'])\njson.dump({'sum':sum(px)&0xffffffff,'len':len(px)},open('/tmp/redune_lop.json','w'))`,
+      );
+      const ref = JSON.parse(readFileSync("/tmp/redune_lop.json", "utf8"));
+      ok("LOP section 0 pixels match Python", ref.sum === sum && ref.len === px.length, `sum ${sum}`);
+    } catch (e) {
+      skip("LOP vs Python", String(e));
+    }
   }
 }
 
