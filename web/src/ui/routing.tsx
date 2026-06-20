@@ -6,10 +6,17 @@ export type IncomingFile = { tab: TabId; name: string; bytes: Uint8Array };
 interface RoutedCtx {
   pending: IncomingFile | null;
   clear: () => void;
+  /** Auto-detect a file's format and route it to the matching tab. */
+  open: (name: string, bytes: Uint8Array) => void;
 }
 
-const Ctx = createContext<RoutedCtx>({ pending: null, clear: () => {} });
+const Ctx = createContext<RoutedCtx>({ pending: null, clear: () => {}, open: () => {} });
 export const RoutedProvider = Ctx.Provider;
+
+/** Returns the global opener (auto-detect + route to the right tab). */
+export function useOpen(): (name: string, bytes: Uint8Array) => void {
+  return useContext(Ctx).open;
+}
 
 /**
  * A tab calls this with its loader; when a file has been routed to this tab

@@ -14,6 +14,13 @@ Outputs (default ``extracted/``):
   - DIALOGUE.HSQ             → DIALOGUE.json                  (data/)
   - PHRASE*.HSQ              → <name>.json                    (text/)
   - COMMAND*.HSQ             → <name>.json                    (text/)
+  - HNM videos               → <name>.png thumb + <name>.wav  (video/)
+  - HERAD music (HSQ/AGD/M32)→ <name>_<ext>.mid               (music/)
+  - LOP animations           → <name>/*.png                   (animations/)
+  - SAL scenes               → <name>.json                    (scenes/)
+  - MAP / MAP2               → <name>.png heatmap              (maps/)
+  - DNCHAR fonts             → <name>.png glyph atlas          (fonts/)
+  - TABLAT/VER/THE_END/GLOB  → <name>.json                    (data/)
   - manifest.json            → catalog of all outputs (top level)
 
 Robustness: every file is processed inside a try/except. Failures are logged
@@ -35,6 +42,7 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'lib'))
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 from compression import hsq_decompress
+from png import write_png
 
 import sprite_decoder
 import sound_decoder
@@ -42,6 +50,17 @@ import condit_decompiler
 import dialogue_decompiler
 import phrase_dumper
 import command_decoder
+import hnm_decoder
+import herad_decoder
+import lop_decoder
+import sal_decoder
+import map_decoder
+import bin_decoder
+import globdata_decoder
+
+# HERAD music stems (each ships as .HSQ / .AGD / .M32).
+HERAD_NAMES = {'ARRAKIS', 'BAGDAD', 'CRYOMUS', 'MORNING', 'SEKENCE',
+               'SIETCHM', 'WARSONG', 'WATER', 'WORMINTR', 'WORMSUIT'}
 
 
 # =============================================================================
@@ -176,7 +195,7 @@ def _write_json(out_root: str, subdir: str, base: str, obj: dict) -> str:
     os.makedirs(d, exist_ok=True)
     rel = os.path.join(subdir, base + '.json')
     with open(os.path.join(out_root, rel), 'w') as f:
-        json.dump(obj, f, indent=2)
+        json.dump(obj, f, indent=2, default=str)
     return rel
 
 
@@ -222,6 +241,137 @@ def extract_command(path: str, name: str, out_root: str) -> dict:
             'count': len(strings)}
 
 
+def extract_hnm(path: str, name: str, out_root: str) -> dict:
+    """HNM video → first-frame PNG thumbnail + WAV soundtrack + metadata."""
+    raw = open(path, 'rb').read()
+    hnm = hnm_decoder.HnmFile(raw)
+    base = os.path.splitext(name)[0]
+    vdir = os.path.join(out_root, 'video')
+    os.makedirs(vdir, exist_ok=True)
+    entry = {'source': name, 'type': 'video', 'frames': hnm.frame_count}
+
+    framebuf = bytearray(64000)  # 320×200
+    palette = bytearray(hnm.palette)
+    hnm.decode_frame(0, framebuf, palette)
+    rgb = bytearray(64000 * 3)
+    for i, p in enumerate(framebuf):
+        o = i * 3
+        b = p * 3
+        rgb[o] = palette[b]
+        rgb[o + 1] = palette[b + 1]
+        rgb[o + 2] = palette[b + 2]
+    png_rel = os.path.join('video', base + '.png')
+    write_png(os.path.join(out_root, png_rel), 320, 200, bytes(rgb))
+    entry['output'] = png_rel
+
+    try:
+        audio = hnm.extract_sound()
+        if audio:
+            wav_rel = os.path.join('video', base + '.wav')
+            hnm_decoder.write_wav(os.path.join(out_root, wav_rel), bytes(audio))
+            entry['audio'] = wav_rel
+    except Exception:
+        pass  # frame thumbnail still useful without audio
+    return entry
+
+
+def extract_herad(path: str, name: str, out_root: str) -> dict:
+    """HERAD music (HSQ/AGD/M32) → Standard MIDI file."""
+    raw = open(path, 'rb').read()
+    data = hsq_decompress(raw) if (len(raw) >= 6 and (sum(raw[:6]) & 0xFF) == 0xAB) else raw
+    mdir = os.path.join(out_root, 'music')
+    os.makedirs(mdir, exist_ok=True)
+    base, ext = os.path.splitext(name)
+    # The three variants share a stem, so disambiguate by extension.
+    rel = os.path.join('music', f"{base}_{ext.lstrip('.').lower()}.mid")
+    herad_decoder.export_midi(name, bytes(data), os.path.join(out_root, rel))
+    info = herad_decoder.parse_herad(bytes(data), name)
+    return {'source': name, 'type': 'music', 'output': rel,
+            'format': info['format'], 'tracks': info['n_tracks']}
+
+
+def extract_lop(path: str, name: str, out_root: str) -> dict:
+    """LOP background animation → per-section greyscale PNGs."""
+    import glob as _glob
+    data = open(path, 'rb').read()
+    base = os.path.splitext(name)[0]
+    rel_dir = os.path.join('animations', base)
+    out_dir = os.path.join(out_root, rel_dir)
+    lop_decoder.export_sections_png(name, data, out_dir)
+    pngs = sorted(_glob.glob(os.path.join(out_dir, '*.png')))
+    return {'source': name, 'type': 'animation', 'output': rel_dir,
+            'sections': len(pngs)}
+
+
+def extract_sal(path: str, name: str, out_root: str) -> dict:
+    """SAL scene layout → structured JSON of every room section's commands."""
+    data = open(path, 'rb').read()
+    count, offsets, _ = sal_decoder.parse_sal(data)
+    sections = []
+    for i in range(count):
+        off = offsets[i]
+        end = offsets[i + 1] if i + 1 < count else len(data)
+        try:
+            sections.append(sal_decoder.decode_section(data, off, end))
+        except Exception:
+            sections.append(None)
+    obj = {'file': name, 'section_count': count, 'sections': sections}
+    rel = _write_json(out_root, 'scenes', os.path.splitext(name)[0], obj)
+    return {'source': name, 'type': 'scene', 'output': rel, 'sections': count}
+
+
+def extract_map(path: str, name: str, out_root: str) -> dict:
+    """MAP/MAP2 HSQ → heatmap PNG."""
+    raw = open(path, 'rb').read()
+    data = hsq_decompress(raw)
+    mdir = os.path.join(out_root, 'maps')
+    os.makedirs(mdir, exist_ok=True)
+    base = os.path.splitext(name)[0]
+    rel = os.path.join('maps', base + '.png')
+    res = map_decoder.render_map_png(bytes(data), os.path.join(out_root, rel))
+    w = res[0] if isinstance(res, (tuple, list)) and res else None
+    h = res[1] if isinstance(res, (tuple, list)) and len(res) > 1 else None
+    return {'source': name, 'type': 'map', 'output': rel, 'width': w, 'height': h}
+
+
+def extract_font(path: str, name: str, out_root: str) -> dict:
+    """DNCHAR*.BIN bitmap font → glyph-atlas PNG."""
+    data = open(path, 'rb').read()
+    fdir = os.path.join(out_root, 'fonts')
+    os.makedirs(fdir, exist_ok=True)
+    base = os.path.splitext(name)[0]
+    rel = os.path.join('fonts', base + '.png')
+    bin_decoder.export_dnchar_png(data, os.path.join(out_root, rel))
+    return {'source': name, 'type': 'font', 'output': rel}
+
+
+def extract_bintable(path: str, name: str, out_root: str) -> dict:
+    """TABLAT / VER / THE_END .BIN tables → JSON."""
+    data = open(path, 'rb').read()
+    up = name.upper()
+    if up.startswith('TABLAT'):
+        obj = {'file': name, 'table': bin_decoder.decode_tablat(data)}
+    elif up.startswith('VER'):
+        obj = {'file': name, 'info': bin_decoder.decode_ver(data)}
+    elif up.startswith('THE_END'):
+        obj = {'file': name, 'lines': bin_decoder.decode_the_end(data)}
+    else:
+        raise ValueError("unknown .BIN table")
+    rel = _write_json(out_root, 'data', os.path.splitext(name)[0], obj)
+    return {'source': name, 'type': 'data', 'output': rel}
+
+
+def extract_globdata(path: str, name: str, out_root: str) -> dict:
+    """GLOBDATA.HSQ → JSON of the gradient tables."""
+    raw = open(path, 'rb').read()
+    data = hsq_decompress(raw)
+    tables = globdata_decoder.parse_gradient_tables(data)
+    obj = {'file': name, 'gradient_table_count': len(tables), 'gradient_tables': tables}
+    rel = _write_json(out_root, 'data', os.path.splitext(name)[0], obj)
+    return {'source': name, 'type': 'data', 'output': rel,
+            'gradient_tables': len(tables)}
+
+
 # =============================================================================
 # PIPELINE
 # =============================================================================
@@ -241,6 +391,28 @@ def classify(name: str, path: str):
         return 'phrase', extract_phrase
     if base.startswith('COMMAND') and ext == '.HSQ':
         return 'command', extract_command
+    if upper in ('MAP.HSQ', 'MAP2.HSQ'):
+        return 'map', extract_map
+    if upper == 'GLOBDATA.HSQ':
+        return 'globdata', extract_globdata
+
+    # HERAD music: same stem ships as .HSQ / .AGD / .M32.
+    if base in HERAD_NAMES and ext in ('.HSQ', '.AGD', '.M32'):
+        return 'music', extract_herad
+
+    # Container/media formats by extension.
+    if ext == '.HNM':
+        return 'video', extract_hnm
+    if ext == '.LOP':
+        return 'animation', extract_lop
+    if ext == '.SAL':
+        return 'scene', extract_sal
+    if ext == '.BIN':
+        if base.startswith('DNCHAR'):
+            return 'font', extract_font
+        if base.startswith('TABLAT') or base.startswith('VER') or base.startswith('THE_END'):
+            return 'data', extract_bintable
+        return None  # GLOBDATA.bin is a decompressed dup of the HSQ — skip
 
     # Sound: SN*.HSQ / SN*.VOC, or any VOC payload.
     if ext == '.VOC':

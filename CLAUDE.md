@@ -176,7 +176,8 @@ python3 tools/condit_decompiler.py samples/CONDIT.HSQ --chains
 - [x] Image export for LOP / MAP / font → `--png` on `lop_decoder.py`, `map_decoder.py`, `bin_decoder.py`
 - [x] JSON exporters → `--json` on condit/dialogue/phrase/command/save (machine-readable for the web app)
 - [x] SAL scene ENCODER → `tools/sal_encoder.py` (**100% byte-identical round-trip on all 4 SAL files**)
-- [x] Asset pipeline → `tools/extract_all.py` (gamedata → PNG/WAV/JSON + manifest, 166/265 auto-extracted)
+- [x] Asset pipeline → `tools/extract_all.py` (gamedata → PNG/WAV/JSON/MIDI + manifest, **251/265** auto-extracted: sprites, sound, CONDIT/DIALOGUE/PHRASE/COMMAND, HNM→PNG+WAV, HERAD→MIDI, LOP→PNG, SAL→JSON, MAP→PNG, fonts→PNG, GLOBDATA/TABLAT/VER→JSON; only the 10 driver blobs + FREQ + 3 misc remain)
+- [x] Web Archive tab "open →" routes any DUNE.DAT entry into the matching studio tab (`useOpen` + auto-detect)
 - [x] Web Asset Studio → `web/` (Vite+React+TS; viewer/editor/recompiler, all in-browser)
 - [x] TypeScript codec ports → `web/src/codecs/` (HSQ, F7, sprite, SAL, text, VOC, map, save, CONDIT decompile+recompile)
 - [x] Codec parity tests → `web/test/codecs.test.ts` (35 checks, byte-for-byte vs Python on real game files)

@@ -2,7 +2,7 @@ import { useMemo, useRef, useState } from "react";
 import { entryIsHsq, extractFile, parseDat, rebuildDat, type DatFile } from "../codecs/dat";
 import { hsqDecompress } from "../codecs/compression";
 import { downloadBytes, hex, LoadBar, Panel, Tag } from "./shared";
-import { useIncoming } from "./routing";
+import { useIncoming, useOpen } from "./routing";
 
 export function DatStudio() {
   const [dat, setDat] = useState<DatFile | null>(null);
@@ -28,6 +28,15 @@ export function DatStudio() {
   };
 
   useIncoming("archive", load);
+  const openInTab = useOpen();
+
+  /** Send an archive entry to the studio tab that can decode it. */
+  const openEntry = (name: string) => {
+    if (!dat) return;
+    const e = dat.entries.find((x) => x.name === name);
+    if (!e) return;
+    openInTab(name, extractFile(dat, e));
+  };
 
   const filtered = useMemo(() => {
     if (!dat) return [];
@@ -126,6 +135,9 @@ export function DatStudio() {
                       <td className="small">{hsq ? <Tag color="var(--blue)">HSQ</Tag> : <span className="muted">raw</span>}</td>
                       <td>
                         <div className="row small" style={{ gap: 4 }}>
+                          <button className="btn small" title="Open in the matching studio tab" onClick={() => openEntry(e.name)}>
+                            open →
+                          </button>
                           <button className="btn small" onClick={() => doExtract(e.name, false)}>
                             extract
                           </button>

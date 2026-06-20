@@ -146,7 +146,7 @@ export function App() {
   const hasFiles = (dt: DataTransfer | null) => !!dt && Array.from(dt.types || []).includes("Files");
 
   return (
-    <RoutedProvider value={{ pending, clear: () => setPending(null) }}>
+    <RoutedProvider value={{ pending, clear: () => setPending(null), open: openFile }}>
       <div
         className="app"
         onDragEnter={(e) => {
