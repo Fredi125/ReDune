@@ -67,6 +67,32 @@ def count_sprites(data):
     return first_sprite_off // 2
 
 
+def _decode_rle8(data, pos, n):
+    """RLE-decode an 8-bit (one byte/pixel) run, the scene-background variant of
+    the sprite RLE: control byte (signed) < 0 repeats the next byte (-c + 1)
+    times; >= 0 copies (c + 1) literal bytes. Returns up to n pixels."""
+    out = []
+    end = len(data)
+    while len(out) < n and pos < end:
+        rep = data[pos]
+        pos += 1
+        if rep >= 128:
+            rep -= 256
+        if rep < 0:
+            if pos >= end:
+                break
+            v = data[pos]
+            pos += 1
+            out.extend([v] * (-rep + 1))
+        else:
+            for _ in range(rep + 1):
+                if pos >= end:
+                    break
+                out.append(data[pos])
+                pos += 1
+    return out[:n]
+
+
 def decode_sprite(data, sprite_idx):
     """Decode a single sprite from decompressed sprite file.
 
@@ -96,6 +122,22 @@ def decode_sprite(data, sprite_idx):
             'width': width, 'height': height,
             'palette_offset': pal_offset, 'compressed': compression,
             'pixels': []
+        }
+
+    if pal_offset >= 0xFE:
+        # 8-bit "scene background" mode (256-colour full images: INT*, DN*, DS*,
+        # PALAIS, VG*, IRUL* subtitles, ...). One byte per pixel — NOT nibble-
+        # packed — and pal_offset (0xFE/0xFF) is a mode flag, not a palette base.
+        # Same RLE control byte as the 4-bit path, but the repeated/literal unit
+        # is a whole 8-bit pixel.
+        n = width * height
+        pixels = _decode_rle8(data, pos, n) if compression else list(data[pos:pos + n])
+        if len(pixels) < n:
+            pixels += [0] * (n - len(pixels))
+        return {
+            'width': width, 'height': height,
+            'palette_offset': pal_offset, 'compressed': compression,
+            'pixels': pixels[:n], 'depth': 8,
         }
 
     pixels = [0] * (width * height)

@@ -20,6 +20,8 @@ export interface Sprite {
   compressed: boolean;
   /** palette indices, width*height (row-major) */
   pixels: Uint8Array;
+  /** pixel bit depth: 4 (nibble-packed sprites, default) or 8 (scene backgrounds) */
+  depth?: number;
 }
 
 export interface SpriteFile {
@@ -152,6 +154,35 @@ export function decodeSprite(data: Uint8Array, spriteIdx: number): Sprite {
 
   if (width === 0 || height === 0) {
     return { width, height, paletteOffset: palOffset, compressed: compression, pixels: new Uint8Array(0) };
+  }
+
+  if (palOffset >= 0xfe) {
+    // 8-bit "scene background" mode (256-colour full images: INT*, DN*, DS*,
+    // PALAIS, VG*, IRUL* subtitles, ...). One byte per pixel — NOT nibble-packed
+    // — and palOffset (0xFE/0xFF) is a mode flag, not a palette base. Same RLE
+    // control byte as the 4-bit path, with whole-pixel repeat/literal units.
+    const n = width * height;
+    const px = new Uint8Array(n);
+    let o = 0;
+    if (compression) {
+      while (o < n && pos < data.length) {
+        let rep = data[pos++];
+        if (rep >= 128) rep -= 256;
+        if (rep < 0) {
+          if (pos >= data.length) break;
+          const v = data[pos++];
+          for (let k = 0; k < -rep + 1 && o < n; k++) px[o++] = v;
+        } else {
+          for (let k = 0; k < rep + 1 && o < n; k++) {
+            if (pos >= data.length) break;
+            px[o++] = data[pos++];
+          }
+        }
+      }
+    } else {
+      for (; o < n && pos < data.length; o++) px[o] = data[pos++];
+    }
+    return { width, height, paletteOffset: palOffset, compressed: compression, pixels: px, depth: 8 };
   }
 
   const pixels = new Uint8Array(width * height);

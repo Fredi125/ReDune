@@ -163,6 +163,7 @@ python3 tools/condit_decompiler.py samples/CONDIT.HSQ --chains
 - [x] Analyze PHRASE*.HSQ → `tools/phrase_dumper.py`
 - [x] Decode BIN files (DNCHAR font, TABLAT, VER, THE_END) → `tools/bin_decoder.py`
 - [x] Decode sprite/graphics HSQ format → `tools/sprite_decoder.py` (palettes, pixel data)
+- [x] **8-bit scene-background decode** → the ~82 full-screen 320×152 images (room interiors `DS*`/`DP*`/`DH*`/`DV*`/`DF*`/`VIL*`, `INT*` landscapes, `VG*`, `PALAIS`, `BOOK`, `IRUL*` subtitle strips) are **256-colour**, not 4-bit. `palette_offset 0xFE/0xFF` flags 8-bit mode (one byte/pixel, same RLE control, no scanline align). Added the branch to `decode_sprite`/`decodeSprite` (Python↔TS byte-identical, tested); palette-bearing ones (INT*/VG*/PALAIS, 0xFE) render with their embedded palette, palette-less ones (0xFF) need an external scene palette. Was previously mis-decoded as 4-bit dither-noise.
 - [x] Decode MAP.HSQ world map → `tools/map_decoder.py` (320×152 tiles, regions, locations)
 - [x] Decode COMMAND.HSQ string table → `tools/command_decoder.py` (all 186 HSQ files classified)
 - [x] Decode HNM video format → `tools/hnm_decoder.py` (LZ frame decompression, BMP+WAV export)

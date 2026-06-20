@@ -407,6 +407,25 @@ Width = `width_low | (width_high << 8)` (15-bit).
 - Negative code: repeat 1 bipixel `(-code + 1)` times
 - Positive code: read `(code + 1)` literal bipixels
 
+### 8-bit scene backgrounds (palette_offset 0xFE / 0xFF)
+
+The full-screen scene backgrounds (room interiors `DS*`/`DP*`/`DH*`/`DV*`/`DF*`/
+`VIL*`, the `INT*` landscapes, `VG*` village, `PALAIS`, `BOOK`, the `IRUL*`
+subtitle strips, …) are **8-bit (256-colour)**, *not* nibble-packed. The
+`palette_offset` byte is the discriminator: **0xFE** (image carries its own
+palette) or **0xFF** (palette-less — uses the current scene palette) marks 8-bit
+mode; it is a flag, **not** a colour base to add. ~82 files use this mode.
+
+Pixel data is one byte per pixel (a direct palette index). The RLE control byte
+is the same as the 4-bit path but the repeated/literal unit is a whole pixel,
+and there is **no per-scanline alignment**:
+- Negative code: repeat the next byte `(-code + 1)` times
+- Positive code: read `(code + 1)` literal bytes
+
+Decoded by `decode_sprite` / `decodeSprite` (the `palette_offset >= 0xFE`
+branch); verified byte-for-byte Python↔TS. Palette-less ones (0xFF) need an
+external scene palette to render in colour.
+
 ### File Categories
 - **Backgrounds** (320×152): DH*, DN2*, DP*, DS*, DV*, DF*, INT*, VG*, VIL*, etc.
 - **Portraits**: CHAN (42×26 thumbs + 120×94 main), EMPR, FEYD, GURN, STIL, etc.

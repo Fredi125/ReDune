@@ -286,6 +286,46 @@ console.log("\nSprite decoding:");
   }
 }
 
+// 8-bit scene backgrounds (palOffset 0xFE/0xFF): 256-colour full images, decoded
+// one byte/pixel. Verify depth=8, full decode, and Python parity.
+{
+  const bgPath = ["INT02.HSQ", "PALAIS.HSQ", "DN20.HSQ"].map((f) => join(GD, f)).find((p) => existsSync(p));
+  if (!bgPath) {
+    skip("scene background 8-bit", "no scene bg present");
+  } else {
+    const sf = loadSpriteFile(read(bgPath));
+    const s0 = decodeSprite(sf.data, 0);
+    let sum = 0;
+    let maxIdx = 0;
+    for (const p of s0.pixels) {
+      sum += p;
+      if (p > maxIdx) maxIdx = p;
+    }
+    ok(
+      "scene bg decodes as 8-bit full image",
+      s0.depth === 8 && s0.width === 320 && s0.height === 152 && s0.pixels.length === 320 * 152 && maxIdx > 0x1f,
+      `${basename(bgPath)} ${s0.width}x${s0.height} depth=${s0.depth} maxIdx=${maxIdx}`,
+    );
+    if (PY) {
+      try {
+        py(
+          `import json,sys\nsys.path.insert(0,'tools')\nimport sprite_decoder as S\nd=S.hsq_decompress(open(${JSON.stringify(bgPath)},'rb').read())\nspr=S.decode_sprite(d,0)\njson.dump({'w':spr['width'],'h':spr['height'],'len':len(spr['pixels']),'sum':int(sum(spr['pixels'])),'depth':spr.get('depth',4)},open('/tmp/redune_bg.json','w'))`,
+        );
+        const ref = JSON.parse(readFileSync("/tmp/redune_bg.json", "utf8"));
+        ok(
+          "scene bg 8-bit matches Python",
+          s0.width === ref.w && s0.height === ref.h && s0.pixels.length === ref.len && sum === ref.sum && ref.depth === 8,
+          `sum=${sum} vs ${ref.sum}`,
+        );
+      } catch (e) {
+        skip("scene bg vs Python", String(e));
+      }
+    } else {
+      skip("scene bg vs Python", "python3 unavailable");
+    }
+  }
+}
+
 // ---------------------------------------------------------------------------
 // SAL room layout: decode -> encode must be byte-identical (all 4 files)
 // ---------------------------------------------------------------------------
