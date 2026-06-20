@@ -106,6 +106,41 @@ Reached via a runtime-patched far-call pointer (the project's
   primitive; rotation is produced by the CS1 caller re-projecting the source
   workspace each frame, so the longitude *origin* lives upstream (not recovered).
 
+## Globe caller — `sub_1BA75` lives in DNCDPRG.EXE ("CS1"), not a missing binary
+
+The driver primitive above only *fills* the disc; the projection is set up by the
+game logic. That logic is **`DNCDPRG.EXE` itself** — the project's "CS1" segment
+is the same EXE, just disassembled completely in `asm/cd/DNCDPRG_RECENT.ASM`
+(base `0x10000`; the older `asm/cd/DNCDPRG.ASM` was truncated at 64 KB, which is
+why the SAL/globe/sprite code looked "missing"). A label `sub_1XXXX` there is at
+EXE offset `0xXXXX`. (Independent corroboration: `madmoose/dune-disassembly`'s
+`DNCDPRG.map`, same `0000:XXXX` seg:offset convention as "CS1:".)
+
+`globe_draw_screen` (`sub_1B8A7`) decompresses `GLOBDATA.HSQ` (resource 0x92),
+reads the orientation, and calls `globe_setup_projection` (`sub_1BA75` @0xBA75):
+
+- **Orientation** = a 2-word struct: longitude `ds:0x197C`, latitude `ds:0x197E`.
+  The player moves the view with `add ds:0x197C,ax` / `add ds:0x197E,ax`.
+- **Longitude** (DX): `dx * 0x18E` (398), high word → `0x494C` (projection scale).
+- **Latitude** (BX): clamped to ±0x62 (98) → `0x2460`, then folded into a
+  **196-entry (0xC4 = 2·98) triangle ramp** at `0x8B77` (the per-scanline
+  gradient the fill consumes).
+- **Fly-to-target transition** (`sub_1BA9E`): steps longitude in ±0x20 (32) and
+  latitude in ±0x18 (24) chunks per frame.
+- **Sphere projection tables** `word_23DFA` / `word_23DFC` @0x23DFA, indexed `<<3`
+  by latitude (`sub_1BAF2`).
+
+So the globe's **longitude origin/rotation** = the `0x197C`/`0x197E` struct
+driven by input (the open item is resolved); only the literal RGB of palette
+bank 0x10–0x1F remains runtime data. Captured in `lib/constants.py` (`GLOBE_*`,
+and `CS1_FUNCTIONS` globe entries) and applied in `web/src/codecs/map.ts`.
+
+**Also revises an earlier note:** DNCDPRG.EXE is *not* render-free — it holds the
+gfx orchestration (`set_a000_as_frame_buffer`, `draw_sprite` @0xC22F, a gfx
+vtable incl. `pal2→pal1` palette copy, scene-sequence loaders) that *drives* the
+DN386/DNVGA primitives. Only the low-level blit/fill/palette loops are in the
+overlays; the callers are in the EXE.
+
 ## Palette colour-cycling (0x0AC4) — verified in both overlays
 
 `mov si,0x73F` (palette work buffer) → `rep movsw` (0x5E words) rotates the band

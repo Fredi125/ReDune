@@ -228,16 +228,24 @@ export interface SpriteAnim {
  * Recover candidate animation sequences from a sprite sheet: maximal runs of
  * consecutive sprites that share width×height×paletteOffset (≥ `minFrames`).
  *
- * This stays a structural heuristic by necessity. Disassembly of the VGA driver
- * overlays (DN386/DNVGA) confirmed they are *pure renderers*: the blit ABI
- * (entry @0x0E2D, clipped @0x1315) takes an explicit source pointer each call —
- * its nibble bipixel unpack, index-0 transparency and paletteOffset all match
- * this codec (validated line-by-line) — but the overlays hold **no frame-cel
- * sequence tables and no animation timer** (no int 1Ah / BDA-tick reads). The
- * cel order + timing live in the game-logic *caller* (the "CS1" main segment,
- * a binary we haven't disassembled), not in DNCDPRG.EXE nor these drivers. So
- * this heuristic (e.g. the 17-frame talking run in CHAN; PERS stays empty) is
- * the right meanwhile approach until that segment is recovered.
+ * This stays a structural heuristic — and disassembling the game logic
+ * (DNCDPRG.EXE / DNCDPRG_RECENT.ASM, the "CS1" segment) proved there is **no
+ * cel-sequence table to recover**. The blit ABI (DN386/DNVGA @0x0E2D/0x1315,
+ * validated line-by-line against this codec — nibble bipixel, index-0
+ * transparency, paletteOffset) just draws an explicit cel; the *engine computes*
+ * which one as `celIndex = base + f(counter & mask)` and advances it on a fixed
+ * time budget (`sub_1E353` polls the ~18.2 Hz tick counter `time_passed`; ~9
+ * ticks/frame ≈ **2 fps**). The COMM talking-head (`sub_127B6`) **ping-pongs**
+ * over ~8 cels (…2,3,4,5,6,5,4,…), independent of the VOC (no lip-sync); some
+ * shimmer elements take the phase from a rotating/PRNG word. The Sprites-tab
+ * preview models this (≈2 fps default + ping-pong toggle).
+ *
+ * ⚠ Caveat this heuristic can't fully avoid: runs of consecutive same-size cels
+ * are frequently **spatial** — a wide image split into halves (`sub_1C2FD`) or a
+ * tile drawn repeatedly (`sub_1617A`), NOT a temporal animation — so treat
+ * groups as candidates. (The only genuine timelines in the EXE are the intro
+ * scene playlist @0x10337 and the HNM-synced Irulan subtitle table @0x22A58 —
+ * neither is a sprite-cel sequence.)
  */
 export function detectAnimations(file: SpriteFile, minFrames = 2): SpriteAnim[] {
   const dims: { w: number; h: number; p: number }[] = [];

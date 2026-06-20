@@ -115,7 +115,11 @@ dune1992-re/
 - **Key discovery**: Multiple entries share bytecode chains via offset overflow
 
 ### DNCDPRG.EXE Disassembly
-- Primary source: `OpenRakis/asm/cd/DNCDPRG.ASM` (1MB IDA disassembly)
+- Primary source: `OpenRakis/asm/cd/DNCDPRG_RECENT.ASM` (**complete** IDA pass,
+  base 0x10000 → label `sub_1XXXX` = EXE offset 0xXXXX). The older
+  `asm/cd/DNCDPRG.ASM` is truncated at 64 KB (SAL/globe/sprite code missing) —
+  prefer RECENT. Independent symbol names: `madmoose/dune-disassembly`.
+- This single EXE is the "CS1" game-logic segment (see the rendering-stack note).
 - CONDIT evaluator: `sub_C266` (main loop), `sub_C1DB` (operand reader), `sub_C204` (op dispatch)
 - Data segment base: DS:0x1138
 
@@ -308,29 +312,32 @@ python3 tools/condit_decompiler.py samples/CONDIT.HSQ --chains
   table is equal-tempered (≤~8 cents), confirming `heradFm.ts` tuning is correct.
 
 ### Key RE finding — the rendering stack (3 layers) → `docs/vga_overlays.md`
-1. `DNCDPRG.EXE` (published `OpenRakis/asm/cd/DNCDPRG.ASM`, single `seg000`):
-   **loader + CONDIT VM + HSQ decompressor only** — **zero** VGA palette/
-   framebuffer I/O (no `3C8h`/`3C9h`, no `0A000h`), no globe/sprite code
-   (verified; CONDIT anchors `sub_C266`/`off_C246` confirm it's the right file).
+1. `DNCDPRG.EXE` — the **main game binary** = loader + CONDIT VM + HSQ + all game
+   logic **AND** the gfx orchestration (scene/SAL/globe/sprite callers, a gfx
+   vtable incl. `pal2→pal1`, `set_a000_as_frame_buffer`, `draw_sprite` @0xC22F).
+   ⚠️ Use the **complete** disasm `OpenRakis/asm/cd/DNCDPRG_RECENT.ASM` (base
+   `0x10000`; label `sub_1XXXX` = EXE offset `0xXXXX`). The older `DNCDPRG.ASM`
+   was **truncated at 64 KB**, which is why SAL/globe/sprite code looked
+   "missing" and seemed to need a separate binary. **"CS1" = this same EXE**
+   (`calc_SAL_index@0x5E4F`, globe `sub_1BA75@0xBA75`). Independent name source:
+   `madmoose/dune-disassembly` `DNCDPRG.map`.
 2. `DN386.HSQ` / `DNVGA.HSQ` (15 KB HSQ overlays, near-identical twins): the
-   **VGA rendering drivers** — a 20-entry blit/fill/clear/scale jump-table ABI
-   (disassembled via objdump 16-bit). Ground-truthed here: **palette cycling**
-   (band 0x80–0xBF @0x0AC4), the **globe sphere-fill** (@0x1B8C: palette bank
-   0x10–0x1F, disc centred col 160/rows 79–80, 200-byte pitch), and the **sprite
+   **low-level VGA driver primitives** — a 20-entry blit/fill/clear/scale ABI
+   (disassembled via objdump 16-bit). Ground-truthed: **palette cycling** (band
+   0x80–0xBF @0x0AC4), the **globe sphere-fill** (@0x1B8C: palette bank
+   0x10–0x1F, disc centred col 160/rows 79–80, 200-byte pitch), the **sprite
    blit** (@0x0E2D/0x1315 — validated line-by-line against our sprite codec).
-   They contain **no** sprite-cel sequence tables, no animation timer, and no
-   globe longitude accumulator.
-3. **"CS1"** game-logic segment (the project's `sub_1BA75` / `calc_SAL_index
-   @CS1:0x5E4F`, offsets > 64 KB that fit neither binary above): owns *which* cel
-   to draw, the globe's longitude origin/rotation, and scene scripting. **Not
-   disassembled** — the remaining home of the exact sprite-cel sequences + globe
-   rotation. The drivers in (2) just draw what CS1 hands them.
+   They hold the loops; DNCDPRG.EXE (layer 1) is the caller.
+3. The globe **orientation/rotation** is now resolved (layer 1): longitude
+   `ds:0x197C` / latitude `ds:0x197E`, scaled ×398 / clamped ±98 by
+   `globe_setup_projection` (`sub_1BA75`); see `lib/constants.py` `GLOBE_*`.
 
-### Low Priority (blocked on the un-disassembled "CS1" game-logic segment)
+### Low Priority
 - [ ] Cycle-exact YM3812 (OPL2) emulator for bit-perfect HERAD timbre (the OPL2 software synth is now a faithful, sample-accurate model — see Medium Priority — but not register-cycle-exact)
-- [x] **Globe palette + geometry ground-truthed** from the DN386 sphere-fill (@0x1B8C): planet disc uses palette **bank 0x10–0x1F** (`planetPaletteIndex`, verified @0x1D1E: `0x10 + (val&0x0F)` + special case), centred col 160/rows 79–80, 200-byte pitch, TABLAT half-widths — applied in `web/src/codecs/map.ts` + Map globe view. Still open: the runtime **RGB** of bank 0x10–0x23 (DAC-uploaded, not in the overlay) and the **longitude origin/rotation** (CS1 caller-side, not this primitive).
-- [x] **Sprite blit ABI validated** (@0x0E2D/0x1315) — our sprite codec matches the engine blitter line-by-line (nibble bipixel, index-0 transparency, paletteOffset). Confirmed the overlays hold **no cel-sequence tables / no anim timer**; exact frame sequences live in the un-disassembled CS1 segment, so `detectAnimations` (heuristic) stays the right meanwhile approach.
-- [ ] Disassemble the **"CS1" game-logic segment** (where `sub_1BA75` / `calc_SAL_index@CS1:0x5E4F` live) for the exact sprite-cel sequences + globe longitude origin + the globe's runtime RGB palette — the binary is > 64 KB and fits neither DNCDPRG nor the 15 KB drivers; source not yet located.
+- [x] **"CS1" mystery resolved**: it is `DNCDPRG.EXE` itself (complete disasm `DNCDPRG_RECENT.ASM`, base 0x10000) — not a separate undiscovered binary. Globe + SAL + sprite + CONDIT are all one EXE; recorded the globe functions/vars in `lib/constants.py` (`CS1_FUNCTIONS` + `GLOBE_*`). `calc_SAL_index@0x5E4F` verified byte-for-byte (reads in-memory `[si+8]`; reconciles with save +0x09).
+- [x] **Globe palette + geometry + orientation ground-truthed**: fill primitive (@0x1B8C) uses palette **bank 0x10–0x1F** (`planetPaletteIndex`, verified @0x1D1E); caller `sub_1BA75` gives longitude `0x197C`/latitude `0x197E`, ×398 scale, ±98 tilt, fly-to-target stepping (±32/±24), sphere tables @0x23DFA. Applied in `web/src/codecs/map.ts`. Only remaining gap: the runtime **RGB** of bank 0x10–0x23 (gfx-vtable pal2→pal1, not a code constant).
+- [x] **Sprite blit ABI validated** (@0x0E2D/0x1315) — our sprite codec matches the engine blitter line-by-line.
+- [x] **Sprite animation model ground-truthed** (DNCDPRG_RECENT.ASM): there is **no cel-sequence table** — the engine computes `celIndex = base + f(counter & mask)` and advances it on a tick budget (`anim_wait_ticks`/`sub_1E353` polling `time_passed`@0x2C32A, ~18.2 Hz / ~9 ticks ≈ **2 fps**); the COMM talking-head **ping-pongs** over ~8 cels (`sub_127B6`), no audio lip-sync. ⚠ runs of same-size cels are often **spatial** (halves `sub_1C2FD` / tiles `sub_1617A`), not animation. Applied to `detectAnimations` doc + Sprites-tab preview (≈2 fps + ping-pong toggle); constants in `lib/constants.py` (`ANIM_*`, COMM funcs). Genuine timelines: intro script @0x10337, Irulan HNM-subtitle table @0x22A58 (not cel sequences).
 
 ## External References
 

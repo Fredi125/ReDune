@@ -176,9 +176,13 @@ LOCATION_TYPE_LABELS = {
 # =============================================================================
 # ROOM LAYOUT: SAL FILES & APPEARANCE BYTE MAPPING
 # =============================================================================
-# Disassembled from calc_SAL_index at CS1:0x5E4F (29 bytes).
-# The appearance byte (sietch record +0x09) selects which SAL file to load
-# and which sprite set to use for room decoration.
+# Disassembled from calc_SAL_index at CS1:0x5E4F (DNCDPRG_RECENT.ASM @0x15E4F).
+# Verified body: reads the appearance byte at in-memory [si+8] and chains
+# `cmp 0x20 / 0x21 / 0x28 / 0x30` incrementing AX -> 0..4. The appearance byte
+# is documented as save/sietch-record +0x09 (validated by the save editor); the
+# in-memory access [si+8] implies si points one byte before the record base
+# (or a 1-byte load shift) -- offsets reconcile, not an error in either.
+# It selects which SAL file to load and which sprite set decorates the room.
 #
 # calc_SAL_index logic (chained threshold comparison on appearance byte):
 #   0x00-0x1F  → +0 → SIET.SAL    (resource 0xA1)
@@ -1074,21 +1078,76 @@ DS_VARIABLES = {
     0xDD0F: ("uint16", "var_DD0F",                  "[C] word"),
 }
 
+# =============================================================================
+# GLOBE / PLANET VIEW (travel screen) - verified from DNCDPRG_RECENT.ASM
+# =============================================================================
+# Orientation is a 2-word DS-relative struct; the player moves the view by
+# adding to it (CS1: `add ds:197Ch,ax` / `add ds:197Eh,ax`). globe_setup_projection
+# (sub_1BA75 @CS1:0xBA75) projects it:
+#   - longitude (DX from 0x197C): dx*0x18E (398), high word -> 0x494C
+#   - latitude  (BX from 0x197E): clamped, stored at 0x2460, folded into a
+#     196-entry (0xC4 = 2*0x62) triangle ramp @0x8B77 (per-scanline gradient)
+# globe_transition_step (sub_1BA9E) animates a fly-to-target by stepping
+# longitude in +/-0x20 and latitude in +/-0x18 chunks/frame; globe_project_longitude
+# (sub_1BAF2) does the per-latitude sphere projection via the word_23DFA /
+# word_23DFC tables (@0x23DFA, indexed <<3). The disc is filled by the
+# DN386/DNVGA driver primitive (@0x1B8C): centred col 160 / rows 79-80, palette
+# bank 0x10-0x1F (see web `planetPaletteIndex`). That bank's runtime RGB comes
+# from the gfx-vtable pal2->pal1 copy, not a code table.
+GLOBE_LONGITUDE_VAR = 0x197C      # DS-relative; passed to sub_1BA75 as DX
+GLOBE_LATITUDE_VAR = 0x197E       # DS-relative; passed to sub_1BA75 as BX
+GLOBE_TILT_VAR = 0x2460           # clamped render tilt (latitude)
+GLOBE_LONGITUDE_SCALE = 0x18E     # 398; dx*398 high word = longitude projection
+GLOBE_TILT_CLAMP = 0x62           # +/-98 latitude clamp (sub_1BA15)
+GLOBE_RAMP_LEN = 0xC4             # 196 = 2*98; folded-triangle gradient @0x8B77
+GLOBE_TRANSITION_LON_STEP = 0x20  # +/-32 longitude per transition frame
+GLOBE_TRANSITION_LAT_STEP = 0x18  # +/-24 latitude per transition frame
+GLOBE_RESOURCE_INDEX = 0x92       # GLOBDATA.HSQ (decompressed fresh per draw)
+GLOBE_PALETTE_BASE = 0x10         # planet disc DAC bank 0x10-0x1F
+
+# =============================================================================
+# SPRITE ANIMATION MODEL (verified from DNCDPRG_RECENT.ASM)
+# =============================================================================
+# There are NO per-character cel-sequence tables. The engine computes the cel:
+#   celIndex = base + f(counter & mask)
+# and advances it on a fixed time budget: anim_wait_ticks (sub_1E353) runs a
+# draw callback once then spins until `time_passed` advances ANIM_FRAME_TICKS.
+# `time_passed` (0x2C32A) is incremented by the IRQ0 ISR (0xEF6A) at the default
+# ~18.2 Hz. So animation runs at ~2 fps. The COMM talking-head (comm_head_pingpong,
+# sub_127B6) PING-PONGS over ~8 cels (2,3,4,5,6,5,4,3,2...) starting at base 0x0B,
+# independent of the VOC audio (time-based loop, not lip-sync). Some shimmer
+# elements take the phase from a rotating/PRNG state word instead of a counter.
+ANIM_TICK_HZ = 18.2065            # default PIT rate; time_passed @0x2C32A
+ANIM_FRAME_TICKS = 9              # typical ticks/frame (~2 fps); some use 0x0C
+TIME_PASSED_VAR = 0x2C32A
+# The only genuine timeline tables in the EXE (NOT sprite-cel sequences):
+INTRO_SCRIPT_TABLE = 0x10337      # intro cutscene playlist (load/play routine tuples)
+IRULAN_SUBTITLE_TABLE = 0x22A58   # Irulan intro subtitles, HNM-frame-numbered, -1 term
+
 CS1_FUNCTIONS = {
     0x093F: "LoadSceneSequenceData",
     0x0945: "SetSceneSequenceOffset",
     0x1AD1: "GetSunlightDay",
     0x1AE0: "SetHourOfTheDayToAX",
+    0x275F: "comm_draw_head_frame",     # draw COMM.HSQ cel (ax&7)+0x0B at (100,86)
+    0x27B6: "comm_head_pingpong",       # ping-pong phase -> talking-head cel
     0x2D74: "open_SAL_resource",
     0x3B59: "draw_SAL",
     0x3BE9: "SAL_polygon",
     0x5E4F: "calc_SAL_index",
     0xA1E8: "IncDialogueCounter",
+    0xB8A7: "globe_draw_screen",        # loads GLOBDATA (res 0x92), reads 0x197C/0x197E
+    0xBA15: "globe_clamp_tilt",         # accumulate word_21910, clamp ±0x62 -> 0x2460
+    0xBA75: "globe_setup_projection",   # dx=lon*0x18E, bx=lat clamp, build ramp @0x8B77
+    0xBA9E: "globe_transition_step",    # fly-to-target: step lon ±0x20, lat ±0x18
+    0xBAF2: "globe_project_longitude",  # sphere proj via word_23DFA/word_23DFC tables
     0xC1DB: "CONDIT_ReadOperand",
     0xC204: "CONDIT_DispatchOp",
     0xC22F: "draw_sprite",
     0xC266: "CONDIT_Evaluate",
     0xC85B: "InitDialogue",
+    0xE353: "anim_wait_ticks",          # run draw callback in BP, spin AX ticks
+    0xEF6A: "irq0_isr_inc_time_passed", # timer ISR: inc time_passed, EOI
     0xF0B9: "open_resource_by_index_si",
     0xF0D6: "read_and_maybe_hsq",
 }

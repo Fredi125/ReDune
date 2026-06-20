@@ -200,10 +200,22 @@ export function SpriteViewer() {
   // Candidate animation sequences (consecutive same-size frames).
   const anims = useMemo(() => (file ? detectAnimations(file) : []), [file]);
   const [selAnim, setSelAnim] = useState(0);
-  const [animFps, setAnimFps] = useState(8);
+  // Engine cadence (verified, DNCDPRG sub_1E353 / time_passed): ~18.2 Hz tick,
+  // ~9 ticks per frame ≈ 2 fps; talking heads ping-pong over the cel span.
+  const [animFps, setAnimFps] = useState(2);
+  const [pingPong, setPingPong] = useState(true);
   const [animPlaying, setAnimPlaying] = useState(false);
   const [animFrame, setAnimFrame] = useState(0);
   const animRef = useRef<HTMLCanvasElement>(null);
+  // Map a monotonic counter to a cel index, ping-ponging (…0,1,2,1,0,1…) like
+  // the engine's COMM talking-head, or looping (…0,1,2,0…) when off.
+  const framePos = (counter: number, count: number): number => {
+    if (count <= 1) return 0;
+    if (!pingPong) return ((counter % count) + count) % count;
+    const period = 2 * (count - 1);
+    const p = ((counter % period) + period) % period;
+    return p < count ? p : period - p;
+  };
   useEffect(() => {
     setSelAnim(0);
     setAnimFrame(0);
@@ -212,14 +224,14 @@ export function SpriteViewer() {
   useEffect(() => {
     const a = anims[selAnim];
     if (!animPlaying || !a) return;
-    const id = setInterval(() => setAnimFrame((f) => (f + 1) % a.count), Math.max(30, 1000 / Math.max(1, animFps)));
+    const id = setInterval(() => setAnimFrame((f) => f + 1), Math.max(30, 1000 / Math.max(1, animFps)));
     return () => clearInterval(id);
   }, [animPlaying, selAnim, animFps, anims]);
   useEffect(() => {
     const a = anims[selAnim];
     const c = animRef.current;
     if (!a || !c || !file) return;
-    const s = spritesRef.current[a.start + (animFrame % a.count)];
+    const s = spritesRef.current[a.start + framePos(animFrame, a.count)];
     if (!s || s.width === 0) return;
     c.width = a.width;
     c.height = a.height;
@@ -228,7 +240,7 @@ export function SpriteViewer() {
     const img = ctx.createImageData(a.width, a.height);
     img.data.set(spriteToRGBA(s, livePalette, opaque));
     ctx.putImageData(img, 0, 0);
-  }, [anims, selAnim, animFrame, livePalette, opaque, file]);
+  }, [anims, selAnim, animFrame, pingPong, livePalette, opaque, file]);
   const editedCount = replacedRef.current.size;
 
   return (
@@ -304,11 +316,12 @@ export function SpriteViewer() {
                 ))}
               </select>
               <button className="btn small" onClick={() => setAnimPlaying((p) => !p)}>{animPlaying ? "■ stop" : "▶ play"}</button>
-              <label className="muted">fps</label>
+              <label className="muted" title="Engine cadence ≈ 2 fps (18.2 Hz / ~9 ticks)">fps</label>
               <input type="range" min={1} max={24} value={animFps} onChange={(e) => setAnimFps(+e.target.value)} />
-              {anims[selAnim] && <span className="muted">frame {(animFrame % anims[selAnim].count) + 1}/{anims[selAnim].count}</span>}
+              <label className="muted" title="Engine talking-heads ping-pong over the cel span (DNCDPRG sub_127B6)"><input type="checkbox" checked={pingPong} onChange={(e) => setPingPong(e.target.checked)} /> ping-pong</label>
+              {anims[selAnim] && <span className="muted">frame {framePos(animFrame, anims[selAnim].count) + 1}/{anims[selAnim].count}</span>}
               <canvas ref={animRef} className="pixel" style={{ width: (anims[selAnim]?.width ?? 0) * 2, height: (anims[selAnim]?.height ?? 0) * 2, imageRendering: "pixelated", border: "1px solid var(--border)", background: "#101018" }} />
-              <span className="muted">(heuristic frame groups; exact sequences/timing live in the EXE)</span>
+              <span className="muted">heuristic groups; engine picks cels as base+f(counter) (no stored tables). ⚠ adjacent same-size cels are often spatial halves/tiles, not animation</span>
             </div>
           )}
           <div className="small muted" style={{ marginBottom: 8 }}>

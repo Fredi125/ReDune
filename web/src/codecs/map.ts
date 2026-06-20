@@ -48,13 +48,19 @@ export function heatmapColor(val: number): [number, number, number] {
  *
  * i.e. the planet disc is drawn in the fixed low palette **bank 0x10–0x1F** (a
  * few shades reach 0x23 via the special case) — NOT the 0x80–0xBF colour-cycle
- * band, and NOT a 256-level ramp. The fill routine is DN386 @0x1B8C: the disc is
- * centred at screen column 160 / rows 79–80 and filled symmetrically outward,
- * 200-byte source pitch (= GLOBDATA latitude-block size), half-width per row from
- * TABLAT (199·cos lat). Rotation is driven by the *caller* re-projecting the
- * source each frame, not by this primitive. (The project's old `sub_1BA75` /
- * DNCDPRG citation was wrong — DNCDPRG.EXE has no render code; this lives in the
- * DN386 overlay.)
+ * band, and NOT a 256-level ramp. The fill routine is the DN386/DNVGA driver
+ * primitive @0x1B8C: the disc is centred at screen column 160 / rows 79–80 and
+ * filled symmetrically outward, 200-byte source pitch (= GLOBDATA latitude-block
+ * size), half-width per row from TABLAT (199·cos lat).
+ *
+ * The *caller* is `globe_setup_projection` (`sub_1BA75`) in DNCDPRG.EXE itself
+ * (the "CS1" game-logic segment = `asm/cd/DNCDPRG_RECENT.ASM` @0x1BA75, base
+ * 0x10000 — it is the same EXE, not a missing binary): orientation is a 2-word
+ * struct (longitude `ds:0x197C`, latitude `ds:0x197E`) updated by player input;
+ * longitude is scaled ×0x18E (398), latitude tilt clamped to ±0x62 (98). See
+ * `lib/constants.py` GLOBE_* for the full verified constant set. The bank's
+ * runtime RGB is uploaded via the gfx vtable (pal2→pal1), so it isn't a code
+ * constant — hence the desert ramp below stays an approximation in colour.
  */
 export function planetPaletteIndex(val: number): number {
   let al = val & 0x0f;
