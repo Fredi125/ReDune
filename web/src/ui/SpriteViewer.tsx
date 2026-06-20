@@ -5,6 +5,7 @@ import {
   encodeSpriteFile,
   loadSpriteFile,
   quantizeToSprite,
+  spriteBody,
   spriteToRGBA,
   type EncSprite,
   type RGB,
@@ -147,12 +148,13 @@ export function SpriteViewer() {
 
   const exportHsq = () => {
     if (!file) return;
-    const sprites: EncSprite[] = spritesRef.current.map((s) => ({
-      width: s.width,
-      height: s.height,
-      paletteOffset: s.paletteOffset,
-      pixels: s.pixels,
-    }));
+    // Unedited sprites pass through verbatim (byte-identical); only replaced
+    // sprites are re-encoded — so an untouched export equals the original.
+    const sprites: EncSprite[] = spritesRef.current.map((s, i) =>
+      replacedRef.current.has(i)
+        ? { width: s.width, height: s.height, paletteOffset: s.paletteOffset, pixels: s.pixels }
+        : { width: s.width, height: s.height, paletteOffset: s.paletteOffset, pixels: s.pixels, raw: spriteBody(file, i) },
+    );
     const decompressed = encodeSpriteFile({ paletteBytes: file.paletteBytes, hasExtra: file.hasExtra, sprites });
     downloadBytes(`${name}.HSQ`, hsqCompress(decompressed));
   };

@@ -221,6 +221,28 @@ export interface EncSprite {
   height: number;
   paletteOffset: number;
   pixels: Uint8Array; // palette indices, width*height
+  /** Verbatim original body bytes; when set, emitted as-is (byte-identical
+   * passthrough for unedited sprites — `pixels` etc. are then ignored). */
+  raw?: Uint8Array;
+}
+
+/**
+ * Verbatim body bytes (4-byte header + bipixel data) of sprite `i`, sliced from
+ * the original file. Used to round-trip unedited sprites byte-identically: the
+ * RLE-compressed stream is non-unique, so re-compressing wouldn't match — but
+ * passing the original bytes through does.
+ */
+export function spriteBody(file: SpriteFile, i: number): Uint8Array {
+  const base = file.palEnd;
+  const start = base + u16(file.data, base + i * 2);
+  // End = the next body that starts after `start` (offsets need not be in index
+  // order), or end-of-file for the last one.
+  let end = file.data.length;
+  for (let j = 0; j < file.count; j++) {
+    const o = base + u16(file.data, base + j * 2);
+    if (o > start && o < end) end = o;
+  }
+  return file.data.subarray(start, end);
 }
 
 /**
@@ -234,6 +256,7 @@ export function encodeSpriteFile(opts: { paletteBytes: Uint8Array; hasExtra: boo
   const palEnd = 2 + paletteBytes.length;
 
   const bodies: number[][] = sprites.map((s) => {
+    if (s.raw) return Array.from(s.raw); // verbatim passthrough (unedited sprite)
     const body: number[] = [s.width & 0xff, (s.width >> 8) & 0x7f, s.height & 0xff, s.paletteOffset & 0xff];
     if (hasExtra) body.push(0, 0);
     const nib = (px: number) => (px - s.paletteOffset) & 0x0f;

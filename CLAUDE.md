@@ -264,6 +264,7 @@ python3 tools/condit_decompiler.py samples/CONDIT.HSQ --chains
   corrected. All 713 entries now decompile to readable, correct operators.
 
 - [x] Sprite re-encoder → `web/src/codecs/sprite.ts encodeSpriteFile` (raw mode, decode-equivalent round-trip) + PNG import in Sprites tab
+- [x] Sprite **byte-identical** round-trip → `spriteBody` + `EncSprite.raw` verbatim passthrough (133/133 files exact); Sprites-tab export keeps unedited sprites verbatim and re-encodes only replaced ones (the RLE stream is non-unique, so unedited bytes are passed through rather than re-compressed)
 - [x] Complete game state editor → NPCs + smugglers added to the web Save editor (offsets verified vs Python)
 - [x] MAP globe view → `web/src/codecs/globdata.ts parseGlobe` (64 latitude scanlines, verified vs Python) + experimental sphere render in the Map tab
 

@@ -13,7 +13,7 @@ import { dirname, resolve, join } from "node:path";
 import { hsqDecompress, hsqCompress, f7Decompress, f7Compress, isHsq } from "../src/codecs/compression";
 import { loadCondit, conditEntries, compileExpr, bytesToHex } from "../src/codecs/condit";
 import { DuneSave } from "../src/codecs/save";
-import { loadSpriteFile, decodeSprite, looksLikeSprite, encodeSpriteFile } from "../src/codecs/sprite";
+import { loadSpriteFile, decodeSprite, looksLikeSprite, encodeSpriteFile, spriteBody } from "../src/codecs/sprite";
 import { loadSal, encodeSal } from "../src/codecs/sal";
 import { loadTextTable, encodeTextTable, exportTextHsq, bytesToEditable, editableToBytes } from "../src/codecs/text";
 import { loadDialogue, encodeDialogue } from "../src/codecs/dialogue";
@@ -789,6 +789,12 @@ console.log("\nSprite encoder (round-trip):");
       if (a.width !== b.width || a.height !== b.height || a.paletteOffset !== b.paletteOffset || !eq(a.pixels, b.pixels)) okAll = false;
     }
     ok("sprite re-encode decodes identically", okAll, `${sf.count} sprites`);
+
+    // Verbatim passthrough → byte-identical round-trip for unedited sprites.
+    const verb = [];
+    for (let i = 0; i < sf.count; i++) verb.push({ width: 0, height: 0, paletteOffset: 0, pixels: new Uint8Array(0), raw: spriteBody(sf, i) });
+    const exact = encodeSpriteFile({ paletteBytes: sf.paletteBytes, hasExtra: sf.hasExtra, sprites: verb });
+    ok("sprite re-encode byte-identical (verbatim)", eq(exact, sf.data), `${sf.data.length}B, ${sf.count} sprites`);
   }
 }
 
