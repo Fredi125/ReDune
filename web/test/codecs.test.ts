@@ -27,6 +27,8 @@ import { decodeVoc, encodeVoc, vocToWav, wavToSamples } from "../src/codecs/voc"
 import { heatmapColor, detectMapWidth } from "../src/codecs/map";
 import { hsqDecompress as hsqDec } from "../src/codecs/compression";
 import { detectAssetType } from "../src/ui/detect";
+import { detectCycleRanges, rotatePalette } from "../src/codecs/palette";
+import type { RGB } from "../src/codecs/sprite";
 
 const here = dirname(fileURLToPath(import.meta.url));
 const ROOT = resolve(here, "..", "..");
@@ -750,6 +752,40 @@ console.log("\nAsset auto-detect (routing):");
       continue;
     }
     ok(`auto-detect ${n} (content) -> ${want}`, detectAssetType(n, read(p)) === want);
+  }
+}
+
+// ---------------------------------------------------------------------------
+console.log("\nPalette colour-cycling:");
+{
+  // A smooth 4-entry ramp at 10..13, an isolated colour at 20, another ramp 30..33.
+  const pal = new Map<number, RGB>();
+  for (let i = 0; i < 4; i++) pal.set(10 + i, [i * 30, i * 30, i * 30]);
+  pal.set(20, [255, 0, 0]);
+  for (let i = 0; i < 4; i++) pal.set(30 + i, [10 + i * 25, 0, 0]);
+  const ranges = detectCycleRanges(pal);
+  const hasRamp = (s: number, e: number) => ranges.some((r) => r.start === s && r.end === e);
+  ok("detectCycleRanges finds both ramps", ranges.length === 2 && hasRamp(10, 13) && hasRamp(30, 33), `${ranges.length} ranges`);
+
+  const rot = rotatePalette(pal, [{ start: 10, end: 13 }], 1);
+  const okRot =
+    rot.get(10)![0] === 30 && rot.get(13)![0] === 0 && // ramp rotated by one (wraps)
+    rot.get(20)![0] === 255; // untouched index preserved
+  ok("rotatePalette rotates a range and leaves others intact", okRot);
+  ok("rotatePalette identity at step 0", rotatePalette(pal, ranges, 0) === pal);
+
+  // Real sprite palette: ramps should be found, and rotation must never change
+  // the set of indices present.
+  const sp = ["SUNRS.HSQ", "STARS.HSQ", "CHAN.HSQ"].map((f) => join(GD, f)).find((p) => existsSync(p));
+  if (sp) {
+    const f = loadSpriteFile(read(sp));
+    const rr = detectCycleRanges(f.palette);
+    const rotated = rotatePalette(f.palette, rr, 3);
+    const sameKeys = rotated.size === f.palette.size && [...f.palette.keys()].every((k) => rotated.has(k));
+    ok("detectCycleRanges finds ramps in a real sprite palette", rr.length > 0, `${rr.length} ramps in ${f.palette.size} colors`);
+    ok("rotatePalette preserves palette index set on a real sprite", sameKeys);
+  } else {
+    skip("palette cycle on real sprite", "no sprite present");
   }
 }
 

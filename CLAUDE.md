@@ -201,6 +201,14 @@ python3 tools/condit_decompiler.py samples/CONDIT.HSQ --chains
 - [ ] In-browser OPL2/MT-32 synthesis for true HERAD playback (currently MIDI export only)
 - [ ] True MAP globe projection (via TABLAT) instead of the row-major heatmap
 
+- [x] Palette colour-cycling → `web/src/codecs/palette.ts` (`detectCycleRanges`
+  finds smooth contiguous ramps; `rotatePalette` rotates them) + animated
+  shimmer preview in the Sprites tab (toggle, per-ramp checkboxes, speed). The
+  exact engine cycle ranges live in DNCDPRG.EXE; these are heuristic candidates.
+- [x] FREQ.HSQ identified — not a data table but a ~1.27 s **silent** 8-bit /
+  22 222 Hz VOC calibration buffer ("Sample test to calc freq" + 28 224 × 0x80).
+  No decoder needed; documented so it's not mistaken for game audio.
+
 - [x] HERAD OPL2/AGD event parser verified against adplug's CheradPlayer
   (herad.cpp): adplug's current model does **not** fit Cryo's files (recovers
   ~1.5k of ~24k notes, kills ~20 tracks), so Dune predates that revision. The

@@ -11,6 +11,7 @@ import {
   type Sprite,
   type SpriteFile,
 } from "../codecs/sprite";
+import { detectCycleRanges, rotatePalette } from "../codecs/palette";
 import { downloadBytes, hex, LoadBar, Panel, Tag } from "./shared";
 import { useIncoming } from "./routing";
 
@@ -158,7 +159,33 @@ export function SpriteViewer() {
 
   useIncoming("sprites", load);
 
-  const paletteEntries = useMemo(() => (file ? [...file.palette.entries()].sort((a, b) => a[0] - b[0]) : []), [file]);
+  // Colour cycling: rotate contiguous palette ramps to preview shimmer effects.
+  const [cycle, setCycle] = useState(false);
+  const [cycleSpeed, setCycleSpeed] = useState(8); // steps/sec
+  const [phase, setPhase] = useState(0);
+  const [disabledRanges, setDisabledRanges] = useState<Set<number>>(new Set());
+  const ranges = useMemo(() => (file ? detectCycleRanges(file.palette) : []), [file]);
+  useEffect(() => {
+    setDisabledRanges(new Set());
+    setPhase(0);
+  }, [file]);
+  useEffect(() => {
+    if (!cycle || ranges.length === 0) return;
+    const id = setInterval(() => setPhase((p) => p + 1), Math.max(40, 1000 / Math.max(1, cycleSpeed)));
+    return () => clearInterval(id);
+  }, [cycle, cycleSpeed, ranges.length]);
+  const activeRanges = useMemo(() => ranges.filter((_, i) => !disabledRanges.has(i)), [ranges, disabledRanges]);
+  const livePalette = useMemo(
+    () => (file && cycle ? rotatePalette(file.palette, activeRanges, phase) : file?.palette ?? new Map()),
+    [file, cycle, activeRanges, phase],
+  );
+
+  const paletteEntries = useMemo(() => [...livePalette.entries()].sort((a, b) => a[0] - b[0]), [livePalette]);
+  const inRange = useMemo(() => {
+    const s = new Set<number>();
+    for (const r of activeRanges) for (let i = r.start; i <= r.end; i++) s.add(i);
+    return s;
+  }, [activeRanges]);
   const editedCount = replacedRef.current.size;
 
   return (
@@ -176,6 +203,14 @@ export function SpriteViewer() {
               <label className="muted">
                 <input type="checkbox" checked={opaque} onChange={(e) => setOpaque(e.target.checked)} /> opaque
               </label>
+              {ranges.length > 0 && (
+                <label className="muted" title={`${ranges.length} cyclable colour ramp(s) detected`}>
+                  <input type="checkbox" checked={cycle} onChange={(e) => setCycle(e.target.checked)} /> ✨ cycle
+                </label>
+              )}
+              {cycle && ranges.length > 0 && (
+                <input type="range" min={1} max={30} value={cycleSpeed} title="cycle speed" onChange={(e) => setCycleSpeed(+e.target.value)} />
+              )}
               {editedCount > 0 && <Tag color="var(--amber)">{editedCount} edited</Tag>}
               <button className="btn primary" onClick={exportHsq}>⤓ Export .HSQ</button>
             </div>
@@ -184,8 +219,36 @@ export function SpriteViewer() {
           {paletteEntries.length > 0 && (
             <div className="row" style={{ gap: 2, marginBottom: 10 }}>
               {paletteEntries.map(([idx, [r, g, b]]) => (
-                <span key={idx} className="swatch" title={`${idx}: ${r},${g},${b}`} style={{ background: `rgb(${r},${g},${b})` }} />
+                <span
+                  key={idx}
+                  className="swatch"
+                  title={`${idx}: ${r},${g},${b}${inRange.has(idx) ? " (cycling)" : ""}`}
+                  style={{ background: `rgb(${r},${g},${b})`, outline: cycle && inRange.has(idx) ? "1px solid var(--amber)" : undefined }}
+                />
               ))}
+            </div>
+          )}
+          {ranges.length > 0 && (
+            <div className="row small muted" style={{ gap: 8, marginBottom: 8, flexWrap: "wrap" }}>
+              <span>Colour-cycle ramps:</span>
+              {ranges.map((r, i) => (
+                <label key={i} style={{ cursor: "pointer" }}>
+                  <input
+                    type="checkbox"
+                    checked={!disabledRanges.has(i)}
+                    onChange={(e) =>
+                      setDisabledRanges((prev) => {
+                        const n = new Set(prev);
+                        if (e.target.checked) n.delete(i);
+                        else n.add(i);
+                        return n;
+                      })
+                    }
+                  />{" "}
+                  {hex(r.start)}–{hex(r.end)}
+                </label>
+              ))}
+              <span className="muted">(heuristic ranges; exact engine ranges live in the EXE)</span>
             </div>
           )}
           <div className="small muted" style={{ marginBottom: 8 }}>
@@ -194,7 +257,7 @@ export function SpriteViewer() {
           </div>
           <div className="row" style={{ alignItems: "flex-start" }}>
             {spritesRef.current.map((s, i) => (
-              <SpriteCell key={i} name={name} idx={i} sprite={s} palette={file.palette} scale={scale} opaque={opaque} replaced={replacedRef.current.has(i)} onReplace={onReplace} />
+              <SpriteCell key={i} name={name} idx={i} sprite={s} palette={livePalette} scale={scale} opaque={opaque} replaced={replacedRef.current.has(i)} onReplace={onReplace} />
             ))}
           </div>
         </Panel>
