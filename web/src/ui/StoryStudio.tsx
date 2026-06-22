@@ -1,7 +1,7 @@
-import { useMemo, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 import { exportDialogueHsq, loadDialogue, refreshRecord, type DialogueFile, type DialogueRecord } from "../codecs/dialogue";
 import { conditionExpr, loadCondit, type ConditFile } from "../codecs/condit";
-import { displayText, loadTextTable, type TextTable } from "../codecs/text";
+import { displayText, exportTextHsq, loadTextTable, type TextTable } from "../codecs/text";
 import { downloadBytes, hex, LoadBar, NumberField, Panel, Tag } from "./shared";
 import { useIncoming } from "./routing";
 
@@ -13,10 +13,21 @@ export function StoryStudio() {
   const [sel, setSel] = useState(0);
   const [search, setSearch] = useState("");
   const [, setVer] = useState(0);
+  const phrInputRef = useRef<HTMLInputElement>(null);
   const editRaw = (r: DialogueRecord, fn: () => void) => {
     fn();
     refreshRecord(r);
     setVer((v) => v + 1);
+  };
+  const loadPhraseFile = (file: File) => {
+    file.arrayBuffer().then((buf) => {
+      try {
+        setPhr(loadTextTable(new Uint8Array(buf)));
+        setPhrName(file.name);
+      } catch (e) {
+        alert("Not a PHRASE table: " + e);
+      }
+    });
   };
 
   const phraseText = (idx: number): string | null => {
@@ -57,6 +68,7 @@ export function StoryStudio() {
 
   return (
     <div className="col">
+      <input ref={phrInputRef} type="file" accept=".HSQ,.hsq" style={{ display: "none" }} onChange={(e) => e.target.files?.[0] && loadPhraseFile(e.target.files[0])} />
       <LoadBar accept=".HSQ,.hsq" sampleName="DIALOGUE.HSQ" hint="Load DIALOGUE.HSQ (required) — the dialogue script table." onLoad={(_, b) => { try { setDlg(loadDialogue(b)); } catch (e) { alert("Not DIALOGUE.HSQ: " + e); } }} />
       <div className="row">
         <div className="grow">
@@ -86,13 +98,17 @@ export function StoryStudio() {
             <Panel
               title={entry ? `Entry #${entry.entry} — ${entry.records.length} options` : "Dialogue entry"}
               accent="var(--purple)"
-              right={dlg ? <button className="btn primary" onClick={() => downloadBytes("DIALOGUE.HSQ", exportDialogueHsq(dlg.entries))}>⤓ Export DIALOGUE.HSQ</button> : undefined}
+              right={dlg ? (
+                <div className="row small" style={{ gap: 6 }}>
+                  {phr && <button className="btn" title={`Re-pack edited phrases into ${phrName}`} onClick={() => downloadBytes(phrName || "PHRASE.HSQ", exportTextHsq(phr.entries))}>⤓ Export PHRASE</button>}
+                  <button className="btn primary" onClick={() => downloadBytes("DIALOGUE.HSQ", exportDialogueHsq(dlg.entries))}>⤓ Export DIALOGUE.HSQ</button>
+                </div>
+              ) : undefined}
             >
               {!cf && <div className="small muted" style={{ marginBottom: 8 }}>Load CONDIT.HSQ to resolve conditions; PHRASE to resolve text. Fields below are editable.</div>}
               <div className="scroll" style={{ maxHeight: 480 }}>
                 {entry?.records.map((r, i) => {
                   const expr = condExpr(r.conditIdx);
-                  const text = phraseText(r.phraseIdx);
                   return (
                     <div key={i} style={{ borderBottom: "1px solid #1e1a14", padding: "8px 0" }}>
                       <div className="row small" style={{ gap: 4 }}>
@@ -109,9 +125,26 @@ export function StoryStudio() {
                           {expr !== null ? `: ${expr}` : ""}
                         </span>
                       </div>
-                      <div className="small" style={{ marginTop: 2 }}>
+                      <div className="small" style={{ marginTop: 2, display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
                         <span className="muted">SAY</span> <span className="muted">phrase {hex(r.phraseIdx, 3)}:</span>{" "}
-                        {text !== null ? <span style={{ color: "var(--text)" }}>“{text}”</span> : <span className="muted">(load PHRASE to see text)</span>}
+                        {!phr ? (
+                          <a className="clickable" style={{ color: "var(--blue)", textDecoration: "underline", cursor: "pointer" }} onClick={() => phrInputRef.current?.click()}>
+                            load PHRASE to see / edit text…
+                          </a>
+                        ) : phr.entries[r.phraseIdx] ? (
+                          <input
+                            className="mono"
+                            style={{ flex: 1, minWidth: 200, color: "var(--text)", background: "#0f0d0a", border: "1px solid var(--border)", borderRadius: 4, padding: "2px 6px" }}
+                            value={phr.entries[r.phraseIdx].text}
+                            title="Edit the phrase text — ⤓ Export PHRASE writes a working .HSQ"
+                            onChange={(e) => { phr.entries[r.phraseIdx].text = e.target.value; setVer((v) => v + 1); }}
+                          />
+                        ) : (
+                          <span className="muted">
+                            ⟨not in {phrName} — wrong bank?⟩{" "}
+                            <a className="clickable" style={{ color: "var(--blue)", textDecoration: "underline", cursor: "pointer" }} onClick={() => phrInputRef.current?.click()}>load another…</a>
+                          </span>
+                        )}
                       </div>
                       <div className="row" style={{ gap: 4, marginTop: 4, alignItems: "flex-end" }}>
                         <NumberField label="NPC" value={r.npcId} max={255} onChange={(v) => editRaw(r, () => (r.raw[1] = v & 0xff))} style={{ width: 64 }} />
