@@ -2,7 +2,7 @@ import { useRef, useState } from "react";
 import { encodeSal, loadSal, sectionCounts, type SalFile } from "../codecs/sal";
 import { loadSpriteFile, type RGB, type SpriteFile } from "../codecs/sprite";
 import { loadGradientTables, type GradTable } from "../codecs/globdata";
-import { recommendedDecoration } from "../codecs/constants";
+import { recommendedDecoration, SAL_FURNITURE_SHEETS } from "../codecs/constants";
 import { downloadBytes, hex, LoadBar, NumberField, Panel, Tag } from "./shared";
 import { useIncoming } from "./routing";
 import { buildSpriteCanvases, RoomCanvas } from "./RoomCanvas";
@@ -21,6 +21,7 @@ export function RoomStudio() {
   };
 
   const [decoName, setDecoName] = useState("");
+  const [sheetOverride, setSheetOverride] = useState("");
   const [sprites, setSprites] = useState<(HTMLCanvasElement | null)[] | null>(null);
   const [palette, setPalette] = useState<Map<number, RGB> | null>(null);
   const [spriteCount, setSpriteCount] = useState(0);
@@ -69,7 +70,7 @@ export function RoomStudio() {
   useIncoming("rooms", loadSalFile);
 
   const section = sal && sel < sal.sections.length ? sal.sections[sel] : null;
-  const tip = salName ? recommendedDecoration(salName) : undefined;
+  const tip = sheetOverride || (salName ? recommendedDecoration(salName) : undefined);
 
   const editCmd = (ci: number, patch: Record<string, number>) => {
     if (!section) return;
@@ -106,6 +107,15 @@ export function RoomStudio() {
               ) : (
                 <>none loaded{tip && <> — recommended: <b>{tip}</b></>}</>
               )}
+              <label style={{ marginLeft: 10 }}>
+                furniture sheet:{" "}
+                <select value={sheetOverride} onChange={(e) => setSheetOverride(e.target.value)} title="Which sheet to render the room's furniture tiles from. SIET rooms use SIET1; palace/village/harkonnen use per-room context sheets (COMM/EQUI/BALCON/CORR/POR).">
+                  <option value="">auto{salName ? ` (${recommendedDecoration(salName) || "—"})` : ""}</option>
+                  {SAL_FURNITURE_SHEETS.map((s) => (
+                    <option key={s} value={s}>{s}</option>
+                  ))}
+                </select>
+              </label>
             </div>
           </div>
           <LoadBar
@@ -176,12 +186,12 @@ export function RoomStudio() {
                     <div className="small" style={{ marginTop: 8 }}>
                       {have > 0 && skipped > 0 ? (
                         <span style={{ color: "var(--amber)" }}>
-                          ⚠ {skipped}/{spriteCmds.length} room sprites skipped — needs a sheet with ≥{maxIdx + 1} sprites, but {decoName || "the loaded sheet"} has {have}. Try a larger decoration sheet (the per-room MIRROR/MAP2/DS* sheets are backdrop layers; the SAL sprite tiles index a separate, larger sheet that isn't fully resolved yet).
+                          ⚠ {skipped}/{spriteCmds.length} room sprites skipped — needs ≥{maxIdx + 1} sprites, but {decoName} has {have}. Pick a different furniture sheet above (SIET rooms→SIET1; palace/village/harkonnen rooms use per-room context sheets COMM/EQUI/BALCON/CORR/POR).
                         </span>
                       ) : (
-                        <span className="muted">{have > 0 ? `All ${spriteCmds.length} room sprites in range (${decoName} has ${have}).` : "Load a decoration sheet to render the room's sprite art."}</span>
+                        <span className="muted">{have > 0 ? `All ${spriteCmds.length} room sprites in range (${decoName} has ${have}).` : "Load a furniture sheet to render the room's sprite tiles (idx 0 = NPC slot, drawn from PERS in-game)."}</span>
                       )}{" "}
-                      <span className="muted">Polygons fill with GLOBDATA gradient ramps when loaded.</span>
+                      <span className="muted">Polygons fill with the engine's planar gradient (+LFSR dither where polyType&0x3E).</span>
                     </div>
                   );
                 })()}

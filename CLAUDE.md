@@ -90,24 +90,24 @@ dune1992-re/
 | +0x15-0x1B | Equipment | 7 individual counts: Harv, Orni, Knif, Gun, Weird, Atom, Bulb |
 
 ### Room Layout Architecture (SAL Files + Appearance Byte)
-- **⚠ Open: the room compositor is multi-layered; SAL furniture sheet unresolved.**
-  Reverse-engineered model (from `draw_SAL`@0x13B59):
+- **✓ Room compositor model resolved** (from `draw_SAL`@0x13B59) — 3 layers:
   1. **Backdrop** = the per-room "decoration HSQ" (`calc_SAL_index`: SIET→MAP2,
-     PALACE→MIRROR, VILG→DS0, HARK→DS1) — these are full-screen 320×152 *scenes*
-     (MIRROR = 3 palace scenes), a separate layer, NOT the SAL sprite sheet.
-  2. **Polygons + rect fills** — gradient-shaded walls/floors (GLOBDATA ramps).
-  3. **SAL sprite tiles** — `sprite` commands carry a 9-bit index (0–45 PALACE,
-     0–57 SIET) + a per-placement palette offset (both decoded correctly by
-     `sal.ts`/`sal_decoder.py`). Index **0** = an NPC slot (drawn from `PERS`,
-     res 0x26, via the `loc_13D12` special case). Indices 1–45 are furniture from
-     a *pre-opened, context-dependent* sheet (`draw_SAL` only opens `GENERIC`
-     +offset for sections >16). The exact sheet isn't cleanly identifiable:
-     GENERIC = font glyphs, MIXR = the AMERICAN/ENGLISH/FRENCH setup screen,
-     ICONES = closest-looking (furniture-ish) but unconfirmed (palette-obscured).
-  The web currently (mis)uses the backdrop sheet (MIRROR) for the SAL sprite
-  tiles — it renders recognizable rooms (MIRROR scenes placed as sprites) but
-  skips out-of-range indices. A live "N sprites skipped" diagnostic shows the
-  gap. Fully resolving needs tracing the per-room sheet-load on room entry.
+     PALACE→MIRROR, VILG→DS0, HARK→DS1) — full-screen 320×152 *scenes* (MIRROR =
+     3 palace scenes), a separate layer, NOT the SAL sprite sheet.
+  2. **Polygons + rect/line fills** — planar-gradient walls/floors (see below).
+  3. **SAL sprite tiles** — `sprite` commands carry a 9-bit index + a per-placement
+     palette offset (both decoded by `sal.ts`/`sal_decoder.py`). Index **0** = an
+     NPC slot (drawn from `PERS` res 0x26 via the `loc_13D12` special case — the
+     web now **skips it**, which removes the "duplicated full-scene" artifact).
+     Indices 1+ are furniture from a **context sheet chosen at runtime by the
+     engine section number's high nibble**: `draw_SAL` opens resource
+     `0x13+nibble` = GENERIC / PROGUE / COMM / EQUI / BALCON / CORR / POR / SIET1.
+     So the SAL geometry (low nibble = subchunk) is **reused across room contexts
+     with different furniture sheets** — there is no single per-SAL furniture
+     sheet. **SIET rooms = `SIET1.HSQ`** (66 sprites + own 113-colour palette,
+     confirmed — renders the sietch cave). PALACE/VILG/HARK rooms are per-room
+     context sheets (COMM/EQUI/BALCON/CORR/POR). The Rooms tab has a furniture-
+     sheet picker (`SAL_FURNITURE_SHEETS`) + a live "N sprites skipped" diagnostic.
 - **✓ Polygon/line fill ground-truthed + fixed** (`SAL_polygon`@0x13BE9 →
   `func_36` DN386@0x38F5). Fill is a **planar 8.8 fixed-point gradient**:
   `colour = (polySubtype<<8 + Δx·xOffset + Δy·yOffset) >> 8` (xOffset/yOffset are

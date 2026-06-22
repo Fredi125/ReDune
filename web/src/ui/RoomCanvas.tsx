@@ -201,6 +201,10 @@ export function RoomCanvas(props: {
     if (props.show.sprites && props.sprites) {
       for (const cmd of props.section.commands) {
         if (cmd.type === "sprite") {
+          // SAL sprite index 0 is an NPC slot (engine draws it from PERS, only
+          // when an NPC is present) — NOT a sheet sprite. Skipping it avoids the
+          // "duplicated full-scene" artifact (drawing sheet sprite 0 at each slot).
+          if (cmd.spriteIndex <= 0) continue;
           const sc = props.sprites[cmd.spriteIndex];
           if (sc) ctx.drawImage(sc, cmd.x, cmd.y);
         }

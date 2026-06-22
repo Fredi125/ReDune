@@ -137,13 +137,28 @@ export function sietchStatusStr(val: number): string {
 }
 
 // Which decoration sprite sheet pairs with each SAL room file (normal mode).
-// From calc_SAL_index in DNCDPRG.ASM (lib/constants.py SAL_SPRITE_NORMAL).
+// Recommended sheet to load for rendering each SAL's *sprite tiles*.
+// Ground truth (draw_SAL @0x13B59): the SAL sprite indices are drawn from a
+// context sheet chosen at runtime by the engine section number's high nibble
+// (resource 0x13+nibble: GENERIC, PROGUE, COMM, EQUI, BALCON, CORR, POR, SIET1…),
+// so the SAL geometry is REUSED across room contexts with different furniture
+// sheets. SIET rooms resolve cleanly to SIET1.HSQ (66 sprites + own palette);
+// PALACE/VILG/HARK rooms are per-room context sheets (no single sheet), so the
+// backdrop sheet is the safe default and the user can pick a furniture sheet
+// from SAL_FURNITURE_SHEETS. (The per-room "decoration HSQ" — MAP2/MIRROR/DS0/
+// DS1 from calc_SAL_index — are the full-screen *backdrop* layers, not the tiles.)
 export const SAL_DECORATION: Record<string, string> = {
-  "SIET.SAL": "MAP2.HSQ",
-  "PALACE.SAL": "MIRROR.HSQ",
+  "SIET.SAL": "SIET1.HSQ", // confirmed sietch furniture sheet (self-contained palette)
+  "PALACE.SAL": "MIRROR.HSQ", // backdrop; furniture is per-room context (COMM/EQUI/BALCON/CORR/POR)
   "VILG.SAL": "DS0.HSQ",
   "HARK.SAL": "DS1.HSQ",
 };
+
+/** Room furniture/context sprite sheets the user can try in the Rooms tab. */
+export const SAL_FURNITURE_SHEETS = [
+  "SIET1.HSQ", "COMM.HSQ", "EQUI.HSQ", "BALCON.HSQ", "CORR.HSQ", "POR.HSQ",
+  "GENERIC.HSQ", "MIRROR.HSQ", "MIXR.HSQ", "ICONES.HSQ", "MAP2.HSQ", "DS0.HSQ", "DS1.HSQ",
+];
 
 export function recommendedDecoration(salName: string): string | undefined {
   return SAL_DECORATION[salName.toUpperCase()];
