@@ -820,7 +820,7 @@ console.log("\nOPL2 synth:");
   const mkInst = (over: Partial<HeradInstrument>): HeradInstrument => ({
     index: 0, mode: 0, feedback: 0, con: 1, modMul: 1, carMul: 1, modOut: 63, carOut: 0,
     modA: 15, modD: 0, modS: 0, modR: 5, carA: 15, carD: 0, carS: 0, carR: 5, modWave: 0, carWave: 0,
-    modOutVel: 0, carOutVel: 0, ...over,
+    modOutVel: 0, carOutVel: 0, modEgType: true, carEgType: true, modKsr: false, carKsr: false, ...over,
   });
   const renderNote = (it: HeradInstrument, note: number) => {
     const opl = new OPL2(SR);
@@ -856,6 +856,28 @@ console.log("\nOPL2 synth:");
   // scramble Dune's arrangement). Note 69 still sounds ~440 Hz with carMul=4.
   const a4m4 = renderNote(mkInst({ carMul: 4 }), 69);
   ok("OPL2 carMul!=1 stays at written pitch", Math.abs(f0(a4m4) - 440) < 14, `carMul4 f0=${f0(a4m4).toFixed(1)}Hz (not ${(440 * 4)}Hz)`);
+  // EG-type: with the key held, a percussive voice (carEgType=false) decays to
+  // silence; a sustaining one (true) holds at its sustain level. Most Dune
+  // instruments are percussive — forcing them sustaining made them drone.
+  const renderHeld = (it: HeradInstrument) => {
+    const opl = new OPL2(SR);
+    programChannel(opl, 0, it);
+    noteOn(opl, 0, 69, OPL_MULT[it.carMul] ?? 1);
+    const n = Math.floor(SR * 0.6);
+    const out = new Float32Array(n);
+    for (let i = 0; i < n; i++) out[i] = opl.generate(); // key never released
+    return out;
+  };
+  const tailRms = (b: Float32Array) => {
+    let s = 0;
+    const st = Math.floor(b.length * 0.85);
+    for (let i = st; i < b.length; i++) s += b[i] * b[i];
+    return Math.sqrt(s / (b.length - st));
+  };
+  const egp = { modOut: 63, carD: 6, carS: 4, carR: 6 };
+  const perc = tailRms(renderHeld(mkInst({ ...egp, carEgType: false })));
+  const sust = tailRms(renderHeld(mkInst({ ...egp, carEgType: true })));
+  ok("OPL2 EG-type: percussive decays, sustaining holds", perc < sust * 0.5, `perc tail=${perc.toFixed(4)} sust tail=${sust.toFixed(4)}`);
   const noFb = bright(renderNote(mkInst({ modOut: 0, feedback: 0 }), 57));
   const fb7 = bright(renderNote(mkInst({ modOut: 0, feedback: 7 }), 57));
   ok("OPL2 feedback brightens timbre", fb7 > noFb * 1.5, `no-fb=${noFb.toFixed(2)} fb7=${fb7.toFixed(2)}`);

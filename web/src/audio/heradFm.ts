@@ -94,8 +94,14 @@ export function playFmNote(
   g.setValueAtTime(0.0001, t0);
   g.exponentialRampToValueAtTime(peak, t0 + aT);
   g.exponentialRampToValueAtTime(Math.max(0.0001, peak * sLvl), t0 + aT + dT);
-  g.setValueAtTime(Math.max(0.0001, peak * sLvl), rel);
-  g.exponentialRampToValueAtTime(0.0001, rel + rT);
+  if (inst.carEgType) {
+    // sustaining: hold at the sustain level until note-off, then release
+    g.setValueAtTime(Math.max(0.0001, peak * sLvl), rel);
+    g.exponentialRampToValueAtTime(0.0001, rel + rT);
+  } else {
+    // percussive: decay straight through to silence (no sustain hold)
+    g.exponentialRampToValueAtTime(0.0001, t0 + aT + dT + rT);
+  }
   carrier.connect(carGain);
   carGain.connect(dest);
 

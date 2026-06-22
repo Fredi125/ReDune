@@ -298,6 +298,12 @@ export interface HeradInstrument {
   carWave: number;
   modOutVel: number;
   carOutVel: number;
+  /** 0x20 bit 5 — envelope type: true = sustaining (hold at SL), false = percussive (decays past SL). */
+  modEgType: boolean;
+  carEgType: boolean;
+  /** 0x20 bit 4 — key-scale rate (envelope speeds up with pitch). */
+  modKsr: boolean;
+  carKsr: boolean;
 }
 
 const i8 = (b: number) => (b > 127 ? b - 256 : b);
@@ -331,6 +337,13 @@ export function parseInstruments(data: Uint8Array, instOffset: number): HeradIns
       carWave: data[o + 29] & 3,
       modOutVel: i8(data[o + 30]),
       carOutVel: i8(data[o + 31]),
+      // 0x20 AM/VIB/EG-type/KSR bits: the driver (@0x9da..) sources EG-type from
+      // p[+5]/KSR from p[+0xB] (mod) and the carrier block (+0xD) — i.e. file
+      // offsets o+7/o+13 (mod) and o+20/o+26 (car). bit 0 of each.
+      modEgType: (data[o + 7] & 1) !== 0,
+      carEgType: (data[o + 20] & 1) !== 0,
+      modKsr: (data[o + 13] & 1) !== 0,
+      carKsr: (data[o + 26] & 1) !== 0,
     });
   }
   return out;

@@ -312,10 +312,13 @@ const FM_DEPTH = 1.0;
 export function programChannel(opl: OPL2, ch: number, inst: HeradInstrument): void {
   const m = SLOT_MOD[ch];
   const c = SLOT_CAR[ch];
-  // HERAD patches don't decode the KSR/EG-type bits; default to sustaining
-  // envelopes (0x20) so notes hold for their scored duration, KSR off.
-  opl.write(0x20 + m, (0x20 | (inst.modMul & 0x0f)) & 0xff);
-  opl.write(0x20 + c, (0x20 | (inst.carMul & 0x0f)) & 0xff);
+  // Real 0x20 byte: EG-type (bit5) + KSR (bit4) + MULT (bits3-0), decoded from
+  // the patch (see herad.ts). Most Dune voices are PERCUSSIVE (EG-type 0) — they
+  // must decay past the sustain level, not hold — so forcing sustaining (the old
+  // shortcut) made plucks/hits drone. AM/VIB (bits 7/6) need the global 0xBD LFO
+  // we don't model, so they stay 0.
+  opl.write(0x20 + m, ((inst.modEgType ? 0x20 : 0) | (inst.modKsr ? 0x10 : 0) | (inst.modMul & 0x0f)) & 0xff);
+  opl.write(0x20 + c, ((inst.carEgType ? 0x20 : 0) | (inst.carKsr ? 0x10 : 0) | (inst.carMul & 0x0f)) & 0xff);
   opl.write(0x40 + m, inst.modOut & 0x3f);
   opl.write(0x40 + c, inst.carOut & 0x3f);
   opl.write(0x60 + m, ((inst.modA & 0x0f) << 4) | (inst.modD & 0x0f));

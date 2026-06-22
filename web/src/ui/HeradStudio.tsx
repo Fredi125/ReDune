@@ -16,6 +16,7 @@ const DEFAULT_INST: HeradInstrument = {
   modMul: 1, carMul: 1, modOut: 22, carOut: 0,
   modA: 11, modD: 6, modS: 4, modR: 6, carA: 13, carD: 7, carS: 2, carR: 6,
   modWave: 0, carWave: 0, modOutVel: 0, carOutVel: 1,
+  modEgType: true, carEgType: true, modKsr: false, carKsr: false,
 };
 
 export function HeradStudio() {
