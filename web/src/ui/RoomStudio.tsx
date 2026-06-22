@@ -6,8 +6,10 @@ import { recommendedDecoration } from "../codecs/constants";
 import { downloadBytes, hex, LoadBar, NumberField, Panel, Tag } from "./shared";
 import { useIncoming } from "./routing";
 import { buildSpriteCanvases, RoomCanvas } from "./RoomCanvas";
+import { useTint } from "./tint";
 
 export function RoomStudio() {
+  const tint = useTint();
   const [sal, setSal] = useState<SalFile | null>(null);
   const [salName, setSalName] = useState("");
   const [sel, setSel] = useState(0);
@@ -162,11 +164,14 @@ export function RoomStudio() {
                 }
               >
                 {section && (
-                  <RoomCanvas section={section} sprites={sprites} palette={palette} gradTables={gradTables} scale={scale} show={show} bg={bg} rev={rev.current} />
+                  <RoomCanvas section={section} sprites={sprites} palette={palette} gradTables={gradTables} scale={scale} show={show} bg={bg} rev={rev.current} filter={tint.filter} />
                 )}
+                <div style={{ marginTop: 8 }}>{tint.controls}</div>
                 <div className="small muted" style={{ marginTop: 8 }}>
                   Load a decoration sheet to render sprite art. With GLOBDATA.HSQ + the decoration sheet, polygons are
-                  filled with their real vertical gradient ramps (subtype → gradient table → room palette).
+                  filled with their real vertical gradient ramps (subtype → gradient table → room palette). Note: SAL
+                  sprite indices beyond the loaded sheet's sprite count are skipped (load the matching decoration sheet
+                  to fill them in).
                 </div>
               </Panel>
             </div>

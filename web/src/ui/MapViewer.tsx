@@ -4,12 +4,14 @@ import { hsqCompress } from "../codecs/compression";
 import { loadGlobe, type GlobeScanline } from "../codecs/globdata";
 import { parseTablat, tablatScaleCurve } from "../codecs/tablat";
 import { downloadBytes, LoadBar, Panel } from "./shared";
+import { useTint } from "./tint";
 import { useIncoming } from "./routing";
 
 const GLOBE_R = 95;
 const GLOBE_SZ = 2 * GLOBE_R + 10;
 
 export function MapViewer() {
+  const tint = useTint();
   const [mode, setMode] = useState<"flat" | "globe">("flat");
   const [mapData, setMapData] = useState<Uint8Array | null>(null);
   const [mapName, setMapName] = useState("");
@@ -237,7 +239,7 @@ export function MapViewer() {
               <canvas
                 ref={flatRef}
                 className="pixel"
-                style={{ width: `calc(${scale} * 320px)`, imageRendering: "pixelated", cursor: editing ? "crosshair" : "default" }}
+                style={{ width: `calc(${scale} * 320px)`, imageRendering: "pixelated", cursor: editing ? "crosshair" : "default", filter: tint.filter }}
                 onMouseDown={editing ? (e) => { painting.current = true; paintAt(e); } : undefined}
                 onMouseMove={editing ? (e) => { if (painting.current) paintAt(e); } : undefined}
                 onMouseUp={() => { painting.current = false; }}
@@ -245,8 +247,9 @@ export function MapViewer() {
               />
             </div>
           ) : (
-            <canvas ref={globeRef} className="pixel" style={{ width: GLOBE_SZ * 2, height: GLOBE_SZ * 2, imageRendering: "pixelated" }} />
+            <canvas ref={globeRef} className="pixel" style={{ width: GLOBE_SZ * 2, height: GLOBE_SZ * 2, imageRendering: "pixelated", filter: tint.filter }} />
           )}
+          <div style={{ marginTop: 8 }}>{tint.controls}</div>
           <div className="small muted" style={{ marginTop: 8 }}>
             {mode === "flat"
               ? `${heatmap ? "Heatmap (low → high terrain: blue → red/white)." : "Arrakis sand palette (low → high: dark sand → pale rock). Toggle 'heatmap' for the analytic ramp."}${editing ? " ✎ Click/drag to paint the brush terrain value; ⤓ Export writes a valid MAP.HSQ that decodes to your edits." : " Toggle ✎ edit to paint terrain."}`

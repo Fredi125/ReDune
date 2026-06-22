@@ -44,6 +44,7 @@ export function RoomCanvas(props: {
   show: { sprites: boolean; polys: boolean; rects: boolean };
   bg: string;
   rev: number;
+  filter?: string;
 }) {
   const ref = useRef<HTMLCanvasElement>(null);
   const W = 320;
@@ -123,7 +124,7 @@ export function RoomCanvas(props: {
     <canvas
       ref={ref}
       className="pixel"
-      style={{ width: W * props.scale, height: H * props.scale, border: "1px solid var(--border)", background: props.bg }}
+      style={{ width: W * props.scale, height: H * props.scale, border: "1px solid var(--border)", background: props.bg, filter: props.filter ?? "none" }}
     />
   );
 }
