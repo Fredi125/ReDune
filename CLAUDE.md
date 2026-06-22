@@ -108,6 +108,18 @@ dune1992-re/
   tiles — it renders recognizable rooms (MIRROR scenes placed as sprites) but
   skips out-of-range indices. A live "N sprites skipped" diagnostic shows the
   gap. Fully resolving needs tracing the per-room sheet-load on room entry.
+- **✓ Polygon/line fill ground-truthed + fixed** (`SAL_polygon`@0x13BE9 →
+  `func_36` DN386@0x38F5). Fill is a **planar 8.8 fixed-point gradient**:
+  `colour = (polySubtype<<8 + Δx·xOffset + Δy·yOffset) >> 8` (xOffset/yOffset are
+  the ×16 slopes, reseeded at each scanline's left edge), drawn as raw palette
+  indices (room scene palette, mostly the 0x80–0xBF cycle band) — **NOT** a
+  GLOBDATA gradient-table lookup (that's the globe). A 2-bit Galois-LFSR
+  ordered-dither (tap `((polyType&0x3E)<<8)|2`, delta `(lfsr&3)-1`) is added
+  **only when `polyType & 0x3E`** (PALACE walls are flat gradients; SIET + some
+  floors dither). The SAL "rect_fill" command is actually a **Bresenham line**
+  (x1,y1)→(x2,y2) in `header&0xFF`, not a filled rect. `web/src/ui/RoomCanvas.tsx`
+  now renders all this per-pixel into an ImageData (was: wrong GLOBDATA lookup +
+  unconditional hsl/dither, the "hashed" artifacts) → clean gradient rooms.
 - **4 SAL files** define all interior rooms: SIET(14sec), PALACE(15sec), VILG(11sec), HARK(8sec)
 - **Appearance byte** (+0x09) selects SAL file via `calc_SAL_index` (CS1:0x5E4F):
   - `0x00-0x1F` → SIET.SAL, `0x20` → PALACE.SAL, `0x21-0x27` → VILG.SAL

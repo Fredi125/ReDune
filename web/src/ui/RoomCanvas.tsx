@@ -34,7 +34,111 @@ export function buildSpriteCanvases(sf: SpriteFile): (HTMLCanvasElement | null)[
   return out;
 }
 
-/** Composite one SAL room section (rect fills, gradient polygons, decoration sprites). */
+function hexToRgb(s: string): [number, number, number] | null {
+  const m = /^#?([0-9a-f]{6})$/i.exec(s.trim());
+  if (!m) return null;
+  const n = parseInt(m[1], 16);
+  return [(n >> 16) & 0xff, (n >> 8) & 0xff, n & 0xff];
+}
+
+type PixelSink = (x: number, y: number, idx: number) => void;
+type PolyCmd = {
+  polyType: number;
+  polySubtype: number;
+  xOffset: number;
+  yOffset: number;
+  initX: number;
+  initY: number;
+  verticesPass1: [number, number][];
+  verticesPass2: [number, number][];
+};
+
+/**
+ * The real DNCDPRG `SAL_polygon` fill (ground-truthed from the disasm): a planar
+ * 8.8 fixed-point gradient — colour = `(polySubtype<<8 + Δx·xOffset + Δy·yOffset) >> 8`
+ * where xOffset/yOffset are the already-×16 slopes (per pixel / per scanline),
+ * seeded at each scanline's left edge — plus an optional 2-bit Galois-LFSR
+ * ordered-dither stipple over 4 adjacent indices, applied ONLY when
+ * `polyType & 0x3E` (PALACE polys are flat; SIET dithers). Colours are raw
+ * palette indices (the room scene palette, mostly the 0x80–0xBF cycling band) —
+ * NOT a GLOBDATA gradient table (that's the globe renderer).
+ */
+function fillPolygon(cmd: PolyCmd, put: PixelSink) {
+  const pts: [number, number][] = [[cmd.initX, cmd.initY], ...cmd.verticesPass1, ...[...cmd.verticesPass2].reverse()];
+  if (pts.length < 3) return;
+  let top = Infinity;
+  let bot = -Infinity;
+  for (const p of pts) {
+    if (p[1] < top) top = p[1];
+    if (p[1] > bot) bot = p[1];
+  }
+  const yTop = Math.floor(top);
+  const dither = (cmd.polyType & 0x3e) !== 0;
+  const tap = ((cmd.polyType & 0x3e) << 8) | 2;
+  let lfsr = 1;
+  const base = (cmd.polySubtype & 0xff) << 8;
+  const yStart = Math.max(0, yTop);
+  const yEnd = Math.min(199, Math.ceil(bot));
+  for (let y = yStart; y <= yEnd; y++) {
+    const xs: number[] = [];
+    for (let i = 0; i < pts.length; i++) {
+      const a = pts[i];
+      const b = pts[(i + 1) % pts.length];
+      const ya = a[1];
+      const yb = b[1];
+      if ((ya <= y && yb > y) || (yb <= y && ya > y)) {
+        xs.push(a[0] + ((y - ya) / (yb - ya)) * (b[0] - a[0]));
+      }
+    }
+    if (xs.length < 2) continue;
+    xs.sort((p, q) => p - q);
+    const scanPhase = base + (y - yTop) * cmd.yOffset; // phase reseeds at each scanline's left edge
+    for (let k = 0; k + 1 < xs.length; k += 2) {
+      const lx = Math.max(0, Math.ceil(xs[k]));
+      const rx = Math.min(319, Math.floor(xs[k + 1]));
+      let phase = scanPhase;
+      for (let x = lx; x <= rx; x++) {
+        let color = (phase >> 8) & 0xff;
+        if (dither) {
+          const carry = lfsr & 1;
+          lfsr >>= 1;
+          if (carry) lfsr ^= tap;
+          color = (color + ((lfsr & 3) - 1)) & 0xff;
+        }
+        put(x, y, color);
+        phase += cmd.xOffset;
+      }
+    }
+  }
+}
+
+/** Bresenham line (the SAL "rect_fill" command is actually a solid line). */
+function drawLine(x0: number, y0: number, x1: number, y1: number, color: number, put: PixelSink) {
+  x0 |= 0;
+  y0 |= 0;
+  x1 |= 0;
+  y1 |= 0;
+  const dx = Math.abs(x1 - x0);
+  const dy = Math.abs(y1 - y0);
+  const sx = x0 < x1 ? 1 : -1;
+  const sy = y0 < y1 ? 1 : -1;
+  let err = dx - dy;
+  for (;;) {
+    put(x0, y0, color);
+    if (x0 === x1 && y0 === y1) break;
+    const e2 = 2 * err;
+    if (e2 > -dy) {
+      err -= dy;
+      x0 += sx;
+    }
+    if (e2 < dx) {
+      err += dx;
+      y0 += sy;
+    }
+  }
+}
+
+/** Composite one SAL room section (gradient polygons, line fills, decoration sprites). */
 export function RoomCanvas(props: {
   section: SalSection;
   sprites: (HTMLCanvasElement | null)[] | null;
@@ -58,67 +162,51 @@ export function RoomCanvas(props: {
     const ctx = c.getContext("2d");
     if (!ctx) return;
     ctx.imageSmoothingEnabled = false;
-    ctx.fillStyle = props.bg;
-    ctx.fillRect(0, 0, W, H);
 
-    const palRgb = (idx: number, fallback: string) => {
-      const col = props.palette?.get(idx);
-      return col ? `${col[0]},${col[1]},${col[2]}` : fallback;
+    // Polygons + line fills go into an ImageData (per-pixel, so the planar
+    // gradient + LFSR dither are faithful); sprites are composited on top.
+    const img = ctx.createImageData(W, H);
+    const data = img.data;
+    const bg = hexToRgb(props.bg) ?? [16, 16, 24];
+    for (let i = 0; i < W * H; i++) {
+      data[i * 4] = bg[0];
+      data[i * 4 + 1] = bg[1];
+      data[i * 4 + 2] = bg[2];
+      data[i * 4 + 3] = 255;
+    }
+    const pal = props.palette;
+    const put: PixelSink = (x, y, idx) => {
+      if (x < 0 || x >= W || y < 0 || y >= H) return;
+      const o = (y * W + x) * 4;
+      const rgb = pal?.get(idx & 0xff);
+      if (rgb) {
+        data[o] = rgb[0];
+        data[o + 1] = rgb[1];
+        data[o + 2] = rgb[2];
+      } else {
+        data[o] = data[o + 1] = data[o + 2] = idx & 0xff; // grayscale fallback
+      }
+      data[o + 3] = 255;
     };
 
     for (const cmd of props.section.commands) {
-      if (cmd.type === "rect_fill" && props.show.rects) {
-        ctx.fillStyle = `rgb(${palRgb(cmd.header & 0xff, "60,60,70")})`;
-        const x = Math.min(cmd.x1, cmd.x2);
-        const y = Math.min(cmd.y1, cmd.y2);
-        ctx.fillRect(x, y, Math.abs(cmd.x2 - cmd.x1), Math.abs(cmd.y2 - cmd.y1));
-      } else if (cmd.type === "polygon" && props.show.polys) {
-        // Close the shape: init + pass1 (down one edge) + pass2 reversed (up the other).
-        const pts: [number, number][] = [[cmd.initX, cmd.initY], ...cmd.verticesPass1, ...[...cmd.verticesPass2].reverse()];
-        if (pts.length >= 3) {
-          let yTop = Infinity;
-          let yBot = -Infinity;
-          for (const p of pts) {
-            if (p[1] < yTop) yTop = p[1];
-            if (p[1] > yBot) yBot = p[1];
-          }
-          const path = new Path2D();
-          path.moveTo(pts[0][0], pts[0][1]);
-          for (let k = 1; k < pts.length; k++) path.lineTo(pts[k][0], pts[k][1]);
-          path.closePath();
-          const table = props.gradTables && (cmd.polySubtype & 0x7f) < props.gradTables.length ? props.gradTables[cmd.polySubtype & 0x7f] : null;
-          const span = Math.max(1, yBot - yTop);
-          ctx.save();
-          ctx.clip(path);
-          // Fill scanline-by-scanline with the vertical gradient (authentic when
-          // GLOBDATA + the room palette are loaded; approximated otherwise).
-          for (let y = Math.max(0, yTop); y <= Math.min(H - 1, yBot); y++) {
-            let col: string;
-            if (table) {
-              const idx = table.values[Math.min(y - yTop, table.length - 1)] ?? 0;
-              const rgb = props.palette?.get(idx);
-              col = rgb ? `rgb(${rgb[0]},${rgb[1]},${rgb[2]})` : `rgb(${idx},${idx},${idx})`;
-            } else {
-              const t = (y - yTop) / span;
-              const base = props.palette?.get(cmd.polySubtype & 0x3f);
-              if (base) {
-                const f = 0.55 + 0.45 * t;
-                col = `rgb(${(base[0] * f) | 0},${(base[1] * f) | 0},${(base[2] * f) | 0})`;
-              } else {
-                col = `hsl(${(cmd.polySubtype * 7) % 360} 45% ${(18 + t * 34).toFixed(1)}%)`;
-              }
-            }
-            ctx.fillStyle = col;
-            ctx.fillRect(0, y, W, 1);
-          }
-          ctx.restore();
-        }
-      } else if (cmd.type === "sprite" && props.show.sprites && props.sprites) {
-        const sc = props.sprites[cmd.spriteIndex];
-        if (sc) ctx.drawImage(sc, cmd.x, cmd.y);
+      if (cmd.type === "polygon" && props.show.polys) {
+        fillPolygon(cmd, put);
+      } else if (cmd.type === "rect_fill" && props.show.rects) {
+        drawLine(cmd.x1, cmd.y1, cmd.x2, cmd.y2, cmd.header & 0xff, put);
       }
     }
-  }, [props.section, props.sprites, props.palette, props.gradTables, props.show, props.bg, props.rev]);
+    ctx.putImageData(img, 0, 0);
+
+    if (props.show.sprites && props.sprites) {
+      for (const cmd of props.section.commands) {
+        if (cmd.type === "sprite") {
+          const sc = props.sprites[cmd.spriteIndex];
+          if (sc) ctx.drawImage(sc, cmd.x, cmd.y);
+        }
+      }
+    }
+  }, [props.section, props.sprites, props.palette, props.show, props.bg, props.rev]);
 
   return (
     <canvas
