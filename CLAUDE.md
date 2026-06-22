@@ -90,6 +90,17 @@ dune1992-re/
 | +0x15-0x1B | Equipment | 7 individual counts: Harv, Orni, Knif, Gun, Weird, Atom, Bulb |
 
 ### Room Layout Architecture (SAL Files + Appearance Byte)
+- **⚠ Open: SAL sprite-tile sheet unresolved.** The SAL `sprite` commands carry a
+  9-bit index (0–57 across the 4 SALs) + a per-placement palette offset (both
+  decoded correctly by `sal.ts`/`sal_decoder.py`). The per-room "decoration HSQ"
+  (`calc_SAL_index`: SIET→MAP2, PALACE→MIRROR, VILG→DS0, HARK→DS1) are **backdrop
+  layers**, NOT the tile sheet — MIRROR has only 3 sprites, MAP2 0. The tile sheet
+  is a *pre-opened, context-dependent* sheet `draw_SAL` reuses (it only opens
+  `GENERIC`+offset for high sections). Candidates ruled out empirically: GENERIC
+  (indices are 1×1 spacers), MIXR (renders the AMERICAN/ENGLISH/FRENCH language
+  screen — it's the setup-screen sheet). Web shows a live "N sprites skipped"
+  diagnostic; fully completing room furniture needs more RE of the room-entry
+  sheet loader.
 - **4 SAL files** define all interior rooms: SIET(14sec), PALACE(15sec), VILG(11sec), HARK(8sec)
 - **Appearance byte** (+0x09) selects SAL file via `calc_SAL_index` (CS1:0x5E4F):
   - `0x00-0x1F` → SIET.SAL, `0x20` → PALACE.SAL, `0x21-0x27` → VILG.SAL

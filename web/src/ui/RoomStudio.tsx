@@ -167,12 +167,24 @@ export function RoomStudio() {
                   <RoomCanvas section={section} sprites={sprites} palette={palette} gradTables={gradTables} scale={scale} show={show} bg={bg} rev={rev.current} filter={tint.filter} />
                 )}
                 <div style={{ marginTop: 8 }}>{tint.controls}</div>
-                <div className="small muted" style={{ marginTop: 8 }}>
-                  Load a decoration sheet to render sprite art. With GLOBDATA.HSQ + the decoration sheet, polygons are
-                  filled with their real vertical gradient ramps (subtype → gradient table → room palette). Note: SAL
-                  sprite indices beyond the loaded sheet's sprite count are skipped (load the matching decoration sheet
-                  to fill them in).
-                </div>
+                {(() => {
+                  const spriteCmds = (section?.commands ?? []).filter((c) => c.type === "sprite") as { spriteIndex: number }[];
+                  const have = sprites?.length ?? 0;
+                  const maxIdx = spriteCmds.reduce((m, c) => Math.max(m, c.spriteIndex), -1);
+                  const skipped = have > 0 ? spriteCmds.filter((c) => c.spriteIndex >= have).length : 0;
+                  return (
+                    <div className="small" style={{ marginTop: 8 }}>
+                      {have > 0 && skipped > 0 ? (
+                        <span style={{ color: "var(--amber)" }}>
+                          ⚠ {skipped}/{spriteCmds.length} room sprites skipped — needs a sheet with ≥{maxIdx + 1} sprites, but {decoName || "the loaded sheet"} has {have}. Try a larger decoration sheet (the per-room MIRROR/MAP2/DS* sheets are backdrop layers; the SAL sprite tiles index a separate, larger sheet that isn't fully resolved yet).
+                        </span>
+                      ) : (
+                        <span className="muted">{have > 0 ? `All ${spriteCmds.length} room sprites in range (${decoName} has ${have}).` : "Load a decoration sheet to render the room's sprite art."}</span>
+                      )}{" "}
+                      <span className="muted">Polygons fill with GLOBDATA gradient ramps when loaded.</span>
+                    </div>
+                  );
+                })()}
               </Panel>
             </div>
 
