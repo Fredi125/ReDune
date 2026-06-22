@@ -845,12 +845,12 @@ console.log("\nOPL2 synth:");
     for (let i = 1; i < b.length; i++) d += (b[i] - b[i - 1]) ** 2;
     return Math.sqrt(d / b.length);
   };
-  const a4 = renderNote(mkInst({}), 57);
+  const a4 = renderNote(mkInst({}), 69); // MIDI A4 = 440 Hz (note 69, not 57)
   let rms = 0;
   for (const v of a4) rms += v * v;
   rms = Math.sqrt(rms / a4.length);
   ok("OPL2 pure tone non-silent @ ~440Hz", rms > 0.05 && Math.abs(f0(a4) - 440) < 12, `f0=${f0(a4).toFixed(1)}Hz rms=${rms.toFixed(2)}`);
-  const a5 = renderNote(mkInst({}), 69);
+  const a5 = renderNote(mkInst({}), 81); // A5 = 880 Hz
   ok("OPL2 octave ratio == 2", Math.abs(f0(a5) / f0(a4) - 2) < 0.05, `A4=${f0(a4).toFixed(0)} A5=${f0(a5).toFixed(0)}`);
   const noFb = bright(renderNote(mkInst({ modOut: 0, feedback: 0 }), 57));
   const fb7 = bright(renderNote(mkInst({ modOut: 0, feedback: 7 }), 57));

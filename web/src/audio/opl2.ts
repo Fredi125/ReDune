@@ -331,7 +331,11 @@ export function programChannel(opl: OPL2, ch: number, inst: HeradInstrument): vo
 
 /** Convert a (HERAD/MIDI) note to (fnum, block) via the engine's F-number table. */
 export function noteToFreqReg(note: number): { fnum: number; block: number } {
-  let block = Math.floor(note / 12);
+  // The F-number table is one octave; `block` is the octave. With fnum at the
+  // table's A (579) and the OPL freq = fnum·2^block·(OPL_RATE/2^20), note 69 (A4)
+  // must give 440 Hz → block = note/12 − 1 (matches the MIDI/heradFm convention,
+  // note 69 = 440). Using note/12 played everything an octave too high.
+  let block = Math.floor(note / 12) - 1;
   if (block < 0) block = 0;
   if (block > 7) block = 7;
   const fnum = HERAD_FNUM[((note % 12) + 12) % 12];

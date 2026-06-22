@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { decodeMap, detectMapWidth, MAP_WIDTHS, planetColor, renderMapRGBA } from "../codecs/map";
+import { decodeMap, detectMapWidth, heatmapColor, MAP_WIDTHS, planetColor, renderMapRGBA, sandColor } from "../codecs/map";
 import { hsqCompress } from "../codecs/compression";
 import { loadGlobe, type GlobeScanline } from "../codecs/globdata";
 import { parseTablat, tablatScaleCurve } from "../codecs/tablat";
@@ -23,6 +23,7 @@ export function MapViewer() {
   const [rot, setRot] = useState(0);
   const [spin, setSpin] = useState(false);
   const [editing, setEditing] = useState(false);
+  const [heatmap, setHeatmap] = useState(false); // false = Arrakis sand palette (default), true = analytic heatmap
   const [brush, setBrush] = useState(0xc0);
   const [rev, setRev] = useState(0);
   const [dirty, setDirty] = useState(false);
@@ -97,7 +98,7 @@ export function MapViewer() {
     if (mode !== "flat") return;
     const c = flatRef.current;
     if (!c || !mapData) return;
-    const img = renderMapRGBA(mapData, width || undefined);
+    const img = renderMapRGBA(mapData, width || undefined, heatmap ? heatmapColor : sandColor);
     c.width = img.width;
     c.height = img.height;
     const ctx = c.getContext("2d");
@@ -105,7 +106,7 @@ export function MapViewer() {
     const id = ctx.createImageData(img.width, img.height);
     id.data.set(img.rgba);
     ctx.putImageData(id, 0, 0);
-  }, [mode, mapData, width, rev]);
+  }, [mode, mapData, width, rev, heatmap]);
 
   // globe sphere: the GLOBDATA longitude ramps + TABLAT foreshortening give the
   // geometry; when MAP.HSQ is loaded we wrap the *real* world terrain onto it
@@ -210,6 +211,7 @@ export function MapViewer() {
                   </select>
                   <label className="muted">scale</label>
                   <input type="range" min={1} max={4} value={scale} onChange={(e) => setScale(+e.target.value)} />
+                  <label className="muted" title="Arrakis sand palette vs analytic terrain heatmap (low→high)"><input type="checkbox" checked={heatmap} onChange={(e) => setHeatmap(e.target.checked)} /> heatmap</label>
                   <label className="muted" title="Click/drag the map to paint terrain"><input type="checkbox" checked={editing} onChange={(e) => setEditing(e.target.checked)} /> ✎ edit</label>
                   {editing && (
                     <>
@@ -247,7 +249,7 @@ export function MapViewer() {
           )}
           <div className="small muted" style={{ marginTop: 8 }}>
             {mode === "flat"
-              ? `Heatmap (low = blue/sand → high = red/white rock).${editing ? " ✎ Click/drag to paint the brush terrain value; ⤓ Export writes a valid MAP.HSQ that decodes to your edits." : " Toggle ✎ edit to paint terrain."}`
+              ? `${heatmap ? "Heatmap (low → high terrain: blue → red/white)." : "Arrakis sand palette (low → high: dark sand → pale rock). Toggle 'heatmap' for the analytic ramp."}${editing ? " ✎ Click/drag to paint the brush terrain value; ⤓ Export writes a valid MAP.HSQ that decodes to your edits." : " Toggle ✎ edit to paint terrain."}`
               : `Globe: ${mapData ? "the real MAP.HSQ terrain wrapped onto the sphere" : "GLOBDATA latitude bytes (load MAP.HSQ to wrap the real terrain)"} via the GLOBDATA longitude ramps${scaleCurve ? " + the real TABLAT foreshortening" : ""}, desert palette + limb shading. Geometry validated (TABLAT); exact ASM orientation/palette (sub_1BA75) still unpublished.`}
           </div>
         </Panel>

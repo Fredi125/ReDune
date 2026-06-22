@@ -39,6 +39,37 @@ export function heatmapColor(val: number): [number, number, number] {
 }
 
 /**
+ * Desert/sand terrain ramp for the flat map — warm tones only (no blue), so the
+ * world reads as Arrakis sand → rock rather than an analytic heatmap. Shares the
+ * spirit of the globe's `planetColor` but over the full 0–255 terrain range.
+ */
+export function sandColor(val: number): [number, number, number] {
+  const stops: [number, [number, number, number]][] = [
+    [0, [74, 54, 30]], // shadowed sand
+    [64, [150, 110, 56]], // ochre
+    [128, [212, 172, 100]], // sand (yellow)
+    [192, [234, 202, 142]], // bright dune crest
+    [255, [176, 165, 142]], // pale rock
+  ];
+  let lo = stops[0];
+  let hi = stops[stops.length - 1];
+  for (let i = 0; i < stops.length - 1; i++) {
+    if (val >= stops[i][0] && val <= stops[i + 1][0]) {
+      lo = stops[i];
+      hi = stops[i + 1];
+      break;
+    }
+  }
+  const span = hi[0] - lo[0] || 1;
+  const t = (val - lo[0]) / span;
+  return [
+    Math.round(lo[1][0] + (hi[1][0] - lo[1][0]) * t),
+    Math.round(lo[1][1] + (hi[1][1] - lo[1][1]) * t),
+    Math.round(lo[1][2] + (hi[1][2] - lo[1][2]) * t),
+  ];
+}
+
+/**
  * The engine's globe/planet pixel→palette-index map, **verified** from the
  * DN386 VGA overlay's sphere-fill routine (file offset 0x1D1E):
  *
@@ -114,14 +145,18 @@ export function decodeMap(raw: Uint8Array, isRaw = false): Uint8Array {
   return isRaw ? raw : hsqDecompress(raw);
 }
 
-export function renderMapRGBA(data: Uint8Array, width?: number): MapImage {
+export function renderMapRGBA(
+  data: Uint8Array,
+  width?: number,
+  colorFn: (v: number) => [number, number, number] = sandColor,
+): MapImage {
   const w = width || detectMapWidth(data.length);
   const h = Math.ceil(data.length / w);
   const rgba = new Uint8ClampedArray(w * h * 4);
   for (let i = 0; i < w * h; i++) {
     const o = i * 4;
     if (i < data.length) {
-      const [r, g, b] = heatmapColor(data[i]);
+      const [r, g, b] = colorFn(data[i]);
       rgba[o] = r;
       rgba[o + 1] = g;
       rgba[o + 2] = b;
