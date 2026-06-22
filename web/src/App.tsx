@@ -1,4 +1,4 @@
-import { useRef, useState } from "react";
+import { useRef, useState, type ReactNode } from "react";
 import { SpriteViewer } from "./ui/SpriteViewer";
 import { SaveEditor } from "./ui/SaveEditor";
 import { ConditStudio } from "./ui/ConditStudio";
@@ -35,77 +35,64 @@ const TABS: { id: Tab; label: string }[] = [
   { id: "about", label: "ⓘ About" },
 ];
 
+const FEATURES: { ico: string; name: string; desc: ReactNode }[] = [
+  { ico: "◳", name: "Sprites", desc: <>Decode any sprite <code>.HSQ</code> to canvas, export PNG, swap frames with your own art and re-export a working sheet.</> },
+  { ico: "▦", name: "Rooms", desc: <>Composite <code>.SAL</code> rooms — gradient walls + furniture tiles — edit placements, export a byte-perfect <code>.SAL</code>.</> },
+  { ico: "🌍", name: "Map", desc: <>Paint <code>MAP.HSQ</code> terrain, or spin Arrakis as a globe wrapped with the real world map.</> },
+  { ico: "Aa", name: "Font", desc: <>Pixel-edit the <code>DNCHAR.BIN</code> bitmap font with a live text preview; re-export byte-identical.</> },
+  { ico: "✎", name: "Text", desc: <>Translate or mod <code>PHRASE</code> dialogue &amp; <code>COMMAND</code> UI strings, re-export a working <code>.HSQ</code>.</> },
+  { ico: "♪", name: "Audio", desc: <>Play <code>VOC</code> sound effects, import a WAV, and re-export a working <code>.VOC</code> / <code>.HSQ</code>.</> },
+  { ico: "♫", name: "Music", desc: <>Play HERAD songs through a faithful <b>OPL2</b> FM synth, tweak instrument patches, export MIDI.</> },
+  { ico: "▶", name: "Video", desc: <>Decode &amp; play <code>.HNM</code> cutscenes on canvas with their soundtrack; export frames + WAV.</> },
+  { ico: "✦", name: "Story", desc: <>Cross-reference DIALOGUE × CONDIT × PHRASE — every line with its gating condition and text.</> },
+  { ico: "▷", name: "Play", desc: <>The live runtime: the real CONDIT VM unlocks dialogue as you edit <b>GameStage</b> &amp; flags.</> },
+  { ico: "⚔", name: "Save editor", desc: <>Edit <code>DUNE*.SAV</code> globals, troops, sietches, NPCs &amp; smugglers; export a working save.</> },
+  { ico: "⎔", name: "CONDIT studio", desc: <>Browse, decompile &amp; recompile all <b>713</b> condition entries; patch and re-export <code>CONDIT.HSQ</code>.</> },
+  { ico: "🗜", name: "Archive", desc: <>Open <code>DUNE.DAT</code>, extract/replace any file, rebuild the archive — the full mod loop.</> },
+];
+
 function About() {
   return (
     <div className="col">
-      <Panel title="ReDune — Dune (1992) Asset Studio">
-        <p className="small">
-          A fully client-side viewer / editor / recompiler for the 1992 Cryo game <b>Dune</b>. Every codec — HSQ &amp; F7
-          (de)compression, sprite decoding, the save format, and the CONDIT bytecode VM (both directions) — is a
-          TypeScript port of the project's Python tools, validated byte-for-byte against them. Nothing is uploaded:
-          you load <i>your own</i> legal game files and everything is decoded in your browser.
+      <div className="about-hero">
+        <h1 className="about-logo">RE<span className="sun">◍</span>DUNE</h1>
+        <p className="about-tag">
+          A complete, <b>100% in-browser</b> reverse-engineering studio for the 1992 Cryo classic <b>Dune</b>.
+          Decode, view, edit and <b>re-pack</b> the game's graphics, rooms, music, dialogue, saves and archives —
+          every codec a TypeScript port of the project's Python tools, validated byte-for-byte. You load{" "}
+          <i>your own</i> legal game files; nothing is ever uploaded.
         </p>
-        <ul className="small">
-          <li>
-            <b>Sprites</b> — decode any sprite <code>*.HSQ</code> to canvas, export PNG, <b>replace frames with PNGs</b>
-            and re-export a working <code>.HSQ</code> (graphics mods).
-          </li>
-          <li>
-            <b>Rooms</b> — decode <code>*.SAL</code> room layouts, render them to canvas with their decoration
-            sprites, edit/add/move sprite placements, and re-export a byte-perfect <code>.SAL</code>.
-          </li>
-          <li>
-            <b>Map</b> — render <code>MAP.HSQ</code> world terrain as a heatmap, plus an experimental spinning{" "}
-            <b>globe</b> projected from the GLOBDATA latitude scanlines.
-          </li>
-          <li>
-            <b>Font</b> — view &amp; edit the <code>DNCHAR.BIN</code> bitmap font (pixel editor + live preview), re-export
-            a byte-identical <code>.BIN</code>.
-          </li>
-          <li>
-            <b>Text</b> — view/edit <code>PHRASE*.HSQ</code> dialogue and <code>COMMAND*.HSQ</code> UI strings
-            (translations/mods) and re-export a working <code>.HSQ</code>.
-          </li>
-          <li>
-            <b>Audio</b> — decode &amp; play sound effects (<code>SN*.HSQ/.VOC</code>); import a WAV and re-export a
-            working <code>.VOC</code>/<code>.HSQ</code> (sound mods), or export WAV.
-          </li>
-          <li>
-            <b>Music</b> — decode HERAD music + its OPL2 instrument patches, play it in-browser via a 2-operator FM
-            synth driven by the real patches, and export a Standard MIDI file.
-          </li>
-          <li>
-            <b>Video</b> — decode and play <code>*.HNM</code> cutscenes on canvas (frame stepper + soundtrack); export WAV.
-          </li>
-          <li>
-            <b>Story</b> — cross-reference <code>DIALOGUE.HSQ</code> × <code>CONDIT.HSQ</code> × <code>PHRASE*.HSQ</code>:
-            see every dialogue option with its gating condition and spoken line; edit records and re-export
-            <code>DIALOGUE.HSQ</code>.
-          </li>
-          <li>
-            <b>Play</b> — the runtime: load <code>DIALOGUE</code> + <code>CONDIT</code> (+ <code>PHRASE</code>) and the
-            real CONDIT VM evaluates each dialogue option's gating condition against an editable game state — change
-            <b>GameStage</b> or a flag and watch lines unlock.
-          </li>
-          <li>
-            <b>Save editor</b> — load <code>DUNE*.SAV</code>, edit globals / troops / sietches / NPCs / smugglers,
-            export a working save.
-          </li>
-          <li>
-            <b>CONDIT studio</b> — browse &amp; decompile the 713 condition entries, recompile expressions, patch
-            in-place and re-export <code>CONDIT.HSQ</code>.
-          </li>
-          <li>
-            <b>Archive</b> — open <code>DUNE.DAT</code>, extract/decompress any of its files, replace them with your
-            edited assets, and rebuild a working <code>DUNE.DAT</code> — the full mod loop, all in-browser.
-          </li>
-        </ul>
-        <p className="small muted">
-          Tip: use <b>“Open file…”</b> at the top (or just <b>drag a file anywhere</b> onto the window) and ReDune picks
-          the right tab automatically. To load the bundled samples with one click, run <code>npm run dev</code> from a
-          repo clone (it serves <code>gamedata/</code>); otherwise use “Choose file…”. Run the Python{" "}
-          <code>tools/extract_all.py</code> to bulk-export assets to PNG/WAV/JSON.
-        </p>
+        <div className="chips">
+          <span className="chip"><b>13</b> studios</span>
+          <span className="chip"><b>262</b> game files decoded</span>
+          <span className="chip blue"><b>713</b> CONDIT entries</span>
+          <span className="chip green"><b>byte-identical</b> round-trips</span>
+          <span className="chip"><b>0</b> uploads — runs offline</span>
+        </div>
+      </div>
+
+      <div className="feature-grid">
+        {FEATURES.map((f) => (
+          <div key={f.name} className="feature">
+            <div className="feature-h">
+              <span className="feature-ico">{f.ico}</span>
+              <span className="feature-name">{f.name}</span>
+            </div>
+            <div className="feature-desc">{f.desc}</div>
+          </div>
+        ))}
+      </div>
+
+      <Panel title="Getting started">
+        <div className="about-callout">
+          <span className="ico">↥</span>
+          <div className="small">
+            Hit <b>“Open file…”</b> up top — or just <b>drag any Dune file onto the window</b> — and ReDune auto-detects
+            the format and jumps to the right studio. From a repo clone, <code>npm run dev</code> serves the bundled{" "}
+            <code>gamedata/</code> so you can load samples in one click; the Python{" "}
+            <code>tools/extract_all.py</code> bulk-exports everything to PNG / WAV / JSON / MIDI.
+          </div>
+        </div>
       </Panel>
     </div>
   );

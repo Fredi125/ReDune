@@ -23,7 +23,7 @@
  * AdLib timings) rather than bit-exact; the FM modulation index is a fixed
  * depth. Every output sample still comes from the real OPL operator algorithm.
  */
-import { HERAD_FNUM, type HeradInstrument, type HeradFmt, parseTrackEvents } from "../codecs/herad";
+import { type HeradInstrument, type HeradFmt, parseTrackEvents } from "../codecs/herad";
 
 export const OPL_RATE = 3579545 / 72; // 49715.9 Hz — the chip's native sample rate
 
@@ -329,27 +329,53 @@ export function programChannel(opl: OPL2, ch: number, inst: HeradInstrument): vo
   opl.write(0xc0 + ch, ((inst.feedback & 0x07) << 1) | (inst.con > 0 ? 0 : 1));
 }
 
-/** Convert a (HERAD/MIDI) note to (fnum, block) via the engine's F-number table. */
-export function noteToFreqReg(note: number): { fnum: number; block: number } {
-  // The F-number table is one octave; `block` is the octave. With fnum at the
-  // table's A (579) and the OPL freq = fnum·2^block·(OPL_RATE/2^20), note 69 (A4)
-  // must give 440 Hz → block = note/12 − 1 (matches the MIDI/heradFm convention,
-  // note 69 = 440). Using note/12 played everything an octave too high.
-  let block = Math.floor(note / 12) - 1;
-  if (block < 0) block = 0;
-  if (block > 7) block = 7;
-  const fnum = HERAD_FNUM[((note % 12) + 12) % 12];
-  return { fnum, block };
+/** Note → target sounding frequency (Hz); A4 (note 69) = 440 (MIDI/heradFm convention). */
+export function noteHz(note: number): number {
+  return 440 * Math.pow(2, (note - 69) / 12);
 }
 
-export function noteOn(opl: OPL2, ch: number, note: number): void {
-  const { fnum, block } = noteToFreqReg(note);
+/** Any frequency (Hz) → OPL (fnum, block); fnum kept within the chip's 10-bit range. */
+export function freqToReg(freq: number): { fnum: number; block: number } {
+  if (freq <= 0) return { fnum: 0, block: 0 };
+  let block = 0;
+  let fnum = (freq * (1 << 20)) / OPL_RATE; // F-number at block 0
+  while (fnum > 1023 && block < 7) {
+    fnum /= 2;
+    block++;
+  }
+  return { fnum: Math.max(0, Math.min(1023, Math.round(fnum))), block };
+}
+
+/**
+ * Convert a HERAD note to (fnum, block) for a channel whose **carrier** MULT is
+ * `carMul` (the OPL multiplier value 0.5/1/2/3/5…). The chip multiplies each
+ * operator's phase rate by its MULT, so to make the carrier (the audible voice
+ * in FM, and the loud operator in additive) sound at the note's *written* pitch
+ * we program the channel base at `noteHz/carMul`. The modulator (base·modMul)
+ * then sounds at `noteHz·modMul/carMul`, i.e. the modulator:carrier ratio — the
+ * FM timbre — is preserved exactly; only the octave is anchored to the score.
+ *
+ * Why not literal `block = note/12` + the F-number table (what the hardware
+ * does)? Dune's patches set carrier MULT≠1 on most voices, so a literal render
+ * scrambles the arrangement — SIETCHM's lead lands at A6–A7 and its bass at
+ * E4–E5, shrill and out of register. The shipped driver keeps every voice at
+ * its written octave via per-channel setup done at runtime (the slot/transpose
+ * tables it reads @0x135 are zero-filled in the static driver blob, i.e. filled
+ * by the engine), so the in-tune, musically-coherent result is the carrier at
+ * the written pitch with the ratio preserved.
+ */
+export function noteToFreqReg(note: number, carMul = 1): { fnum: number; block: number } {
+  return freqToReg(noteHz(note) / (carMul || 1));
+}
+
+export function noteOn(opl: OPL2, ch: number, note: number, carMul = 1): void {
+  const { fnum, block } = noteToFreqReg(note, carMul);
   opl.write(0xa0 + ch, fnum & 0xff);
   opl.write(0xb0 + ch, 0x20 | (block << 2) | ((fnum >> 8) & 0x03));
 }
 
-export function noteOff(opl: OPL2, ch: number, note: number): void {
-  const { fnum, block } = noteToFreqReg(note);
+export function noteOff(opl: OPL2, ch: number, note: number, carMul = 1): void {
+  const { fnum, block } = noteToFreqReg(note, carMul);
   opl.write(0xb0 + ch, (block << 2) | ((fnum >> 8) & 0x03)); // key-on bit cleared
 }
 
@@ -417,7 +443,12 @@ export function renderHeradOpl2(
     while (fi < offs.length && offs[fi].end <= t) {
       const n = offs[fi++];
       const ch = chOfNote[n.id];
-      if (ch >= 0 && chNote[ch] === n.note) { noteOff(opl, ch, n.note); chFreeAt[ch] = t; chNote[ch] = -1; }
+      if (ch >= 0 && chNote[ch] === n.note) {
+        const offInst = insts[n.instIdx] ?? DEFAULT;
+        noteOff(opl, ch, n.note, offInst ? MULT[offInst.carMul] : 1);
+        chFreeAt[ch] = t;
+        chNote[ch] = -1;
+      }
     }
     while (oi < ons.length && ons[oi].start <= t) {
       const n = ons[oi++];
@@ -431,7 +462,7 @@ export function renderHeradOpl2(
       const inst = insts[n.instIdx] ?? DEFAULT;
       if (inst) {
         programChannel(opl, ch, inst);
-        noteOn(opl, ch, n.note);
+        noteOn(opl, ch, n.note, MULT[inst.carMul]);
         chOfNote[n.id] = ch;
         chNote[ch] = n.note;
         chFreeAt[ch] = Infinity;

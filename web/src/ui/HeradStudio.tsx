@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { encodeHerad, loadHerad, parseTrackEvents, writeInstrument, type HeradInstrument, type HeradLoad } from "../codecs/herad";
+import { encodeHerad, loadHerad, OPL_MULT, parseTrackEvents, writeInstrument, type HeradInstrument, type HeradLoad } from "../codecs/herad";
 import { hsqCompress } from "../codecs/compression";
 import { midiToFreq, oplWaves, playFmNote } from "../audio/heradFm";
 import { OPL2, noteOff, noteOn, programChannel, renderHeradOpl2 } from "../audio/opl2";
@@ -76,12 +76,13 @@ export function HeradStudio() {
       // Render a short note through the real OPL2 core and play the buffer.
       const opl = new OPL2(ctx.sampleRate);
       programChannel(opl, 0, ins);
-      noteOn(opl, 0, 60);
+      const cm = OPL_MULT[ins.carMul] ?? 1;
+      noteOn(opl, 0, 60, cm);
       const n = Math.floor(ctx.sampleRate * 0.75);
       const arr = new Float32Array(n);
       const offAt = Math.floor(n * 0.6);
       for (let i = 0; i < n; i++) {
-        if (i === offAt) noteOff(opl, 0, 60);
+        if (i === offAt) noteOff(opl, 0, 60, cm);
         arr[i] = opl.generate();
       }
       const buf = ctx.createBuffer(1, n, ctx.sampleRate);

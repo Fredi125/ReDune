@@ -107,6 +107,30 @@ older WebAudio oscillator synth (`heradFm.ts`) could not. Honest remaining
 approximations: KSL, vibrato/tremolo (reg 0xBD), a fixed FM depth, and a
 calibrated (not register-cycle-exact) EG rate→time mapping.
 
+### Carrier MULT and pitch (`noteToFreqReg`)
+
+The instrument-load routine (@0x0958, decoded above) confirms each operator's
+4-bit **MULT** is written to its `0x20` register: modulator `MULT = patch[+1]`,
+carrier `MULT = patch[+0xE]` (driver `si` = our 40-byte record base **+2**, so
+these are our `modMul` @`+3` / `carMul` @`+16` — verified field-for-field,
+including the `0x40/0x60/0x80/0xE0` groups and both waveforms). On the chip each
+operator's phase rate is `fnum·MULT`, so a literal render puts the **carrier**
+(the audible voice) at `note·carMul`.
+
+Dune's patches, however, set `carMul ≠ 1` on most voices (e.g. SIETCHM inst 0 =
+**5**, inst 2 = 4; ARRAKIS lead inst 10 = 3). Rendering that literally scrambles
+the arrangement — SIETCHM's bass (notes C2–C3, inst 0) lands at E4–E5 and its
+lead (inst 2) at A6–A7, shrill and out of register; ARRAKIS's melody jumps ~1.5
+octaves when it switches inst 9 (carMul 1) → inst 10 (carMul 3). The shipped
+driver keeps voices at their **written** octave via per-channel setup done at
+runtime — the slot/transpose word table it indexes at `cs:[bx+0x135]` is
+**zero-filled** in the static driver blob (i.e. populated by the engine, not a
+code constant), so it can't be read statically. So `noteToFreqReg` programs the
+channel base at `noteHz / carMul`: the carrier then sounds at the score pitch and
+the modulator at `noteHz·modMul/carMul`, i.e. the modulator:carrier **ratio**
+(the FM timbre) is preserved exactly while the octave is anchored to the music.
+A regression test asserts a `carMul=4` voice still sounds note 69 at ~440 Hz.
+
 > **Companion finding (graphics):** the *palette* hardware code is **not** in
 > `DNCDPRG.EXE` (it has no `3C8h`/`3C9h` I/O) — it lives in the `DNVGA`/`DN386`
 > overlays, where the one hardcoded colour-cycle band is **DAC 0x80–0xBF** (64

@@ -120,7 +120,9 @@ export function MapViewer() {
   useEffect(() => {
     if (mode !== "globe") return;
     const c = globeRef.current;
-    if (!c || !globe || globe.length === 0) return;
+    if (!c) return;
+    const hasGlobe = !!(globe && globe.length > 0);
+    if (!hasGlobe && !mapData) return; // nothing to draw
     c.width = GLOBE_SZ;
     c.height = GLOBE_SZ;
     const ctx = c.getContext("2d");
@@ -129,9 +131,9 @@ export function MapViewer() {
     const cx = GLOBE_SZ / 2;
     const cy = GLOBE_SZ / 2;
     const R = GLOBE_R;
-    const nLat = globe.length;
+    const nLat = hasGlobe ? globe!.length : 0;
     const maxScale = scaleCurve ? Math.max(...scaleCurve) : 0;
-    const rampMaxAll = Math.max(1, ...globe.map((b) => b.rampMax));
+    const rampMaxAll = hasGlobe ? Math.max(1, ...globe!.map((b) => b.rampMax)) : 1;
     // Real-terrain source (optional): wrap MAP.HSQ around the sphere.
     const mapW = mapData ? detectMapWidth(mapData.length) : 0;
     const mapH = mapData ? Math.floor(mapData.length / mapW) : 0;
@@ -142,10 +144,8 @@ export function MapViewer() {
       const sinLat = dy / R;
       const cosLat = Math.sqrt(Math.max(0, 1 - sinLat * sinLat));
       const latNorm = Math.asin(Math.max(-1, Math.min(1, sinLat))) / (Math.PI / 2); // -1..1
-      const b = Math.min(nLat - 1, Math.max(0, Math.round(Math.abs(latNorm) * (nLat - 1))));
-      const blk = globe[b];
-      const tlen = blk.terrain.length;
-      if (tlen === 0) continue;
+      const blk = hasGlobe ? globe![Math.min(nLat - 1, Math.max(0, Math.round(Math.abs(latNorm) * (nLat - 1))))] : null;
+      if (hasGlobe && (!blk || blk.terrain.length === 0)) continue;
       const mapRow = mapData ? Math.min(mapH - 1, Math.max(0, Math.round((0.5 - latNorm * 0.5) * (mapH - 1)))) : 0;
       // Foreshortening width: from the real TABLAT scale curve if loaded, else geometric cos.
       let halfW = R * cosLat;
@@ -156,17 +156,29 @@ export function MapViewer() {
       for (let px = 0; px < GLOBE_SZ; px++) {
         const dx = px - cx;
         if (Math.abs(dx) > halfW || halfW < 1) continue;
-        const p = (dx / halfW + 1) / 2; // 0..1 across visible arc
-        const rampIdx = Math.min(blk.ramp.length - 1, Math.max(0, Math.round(p * (blk.ramp.length - 1))));
-        const lon = blk.ramp[rampIdx];
+        const p = dx / halfW; // -1..1 across visible arc
         let val: number;
         if (mapData) {
-          // longitude ramp → column within the visible hemisphere (mapW/2), spun by rot
-          const col = (((Math.round((lon / rampMaxAll) * (mapW / 2)) + rotCols) % mapW) + mapW) % mapW;
+          let col: number;
+          if (hasGlobe && blk) {
+            // GLOBDATA longitude ramp → column within the visible hemisphere (mapW/2), spun by rot
+            const pp = (p + 1) / 2;
+            const rampIdx = Math.min(blk.ramp.length - 1, Math.max(0, Math.round(pp * (blk.ramp.length - 1))));
+            const lon = blk.ramp[rampIdx];
+            col = (((Math.round((lon / rampMaxAll) * (mapW / 2)) + rotCols) % mapW) + mapW) % mapW;
+          } else {
+            // Geometric sphere (no GLOBDATA): longitude = asin(x) across the visible ±90° hemisphere
+            const lonFrac = Math.asin(Math.max(-1, Math.min(1, p))) / Math.PI + 0.5; // 0..1 across hemisphere
+            col = (((Math.round(lonFrac * (mapW / 2)) + rotCols) % mapW) + mapW) % mapW;
+          }
           val = mapData[mapRow * mapW + col];
         } else {
+          const tlen = blk!.terrain.length;
+          const pp = (p + 1) / 2;
+          const rampIdx = Math.min(blk!.ramp.length - 1, Math.max(0, Math.round(pp * (blk!.ramp.length - 1))));
+          const lon = blk!.ramp[rampIdx];
           const tIdx = (((lon >> 1) + rot) % tlen + tlen) % tlen;
-          val = blk.terrain[tIdx];
+          val = blk!.terrain[tIdx];
         }
         const [r, g, bl] = planetColor(val);
         // sphere shading toward the limb
@@ -199,11 +211,11 @@ export function MapViewer() {
 
       {(mapData || globe) && (
         <Panel
-          title={mode === "flat" ? `${mapName || "MAP"} — terrain heatmap` : `${globeName || "GLOBDATA"} — globe`}
+          title={mode === "flat" ? `${mapName || "MAP"} — terrain heatmap` : `${globe ? globeName || "GLOBDATA" : mapName || "MAP"} — globe`}
           right={
             <div className="row small">
-              <button className={"btn" + (mode === "flat" ? " primary" : "")} disabled={!mapData} onClick={() => setMode("flat")}>flat</button>
-              <button className={"btn" + (mode === "globe" ? " primary" : "")} disabled={!globe} onClick={() => setMode("globe")}>globe</button>
+              <button className={"btn" + (mode === "flat" ? " primary" : "")} disabled={!mapData} title={mapData ? "Flat terrain map" : "Load MAP.HSQ for the flat view"} onClick={() => setMode("flat")}>flat</button>
+              <button className={"btn" + (mode === "globe" ? " primary" : "")} disabled={!globe && !mapData} title={globe ? "Spinning globe (GLOBDATA ramps)" : mapData ? "Spinning globe (geometric sphere from MAP.HSQ — load GLOBDATA.HSQ for the engine-accurate projection)" : "Load MAP.HSQ or GLOBDATA.HSQ for the globe view"} onClick={() => setMode("globe")}>globe</button>
               {mode === "flat" && (
                 <>
                   <label className="muted">width</label>
@@ -253,7 +265,7 @@ export function MapViewer() {
           <div className="small muted" style={{ marginTop: 8 }}>
             {mode === "flat"
               ? `${heatmap ? "Heatmap (low → high terrain: blue → red/white)." : "Arrakis sand palette (low → high: dark sand → pale rock). Toggle 'heatmap' for the analytic ramp."}${editing ? " ✎ Click/drag to paint the brush terrain value; ⤓ Export writes a valid MAP.HSQ that decodes to your edits." : " Toggle ✎ edit to paint terrain."}`
-              : `Globe: ${mapData ? "the real MAP.HSQ terrain wrapped onto the sphere" : "GLOBDATA latitude bytes (load MAP.HSQ to wrap the real terrain)"} via the GLOBDATA longitude ramps${scaleCurve ? " + the real TABLAT foreshortening" : ""}, desert palette + limb shading. Geometry validated (TABLAT); exact ASM orientation/palette (sub_1BA75) still unpublished.`}
+              : `Globe: ${mapData ? "the real MAP.HSQ terrain wrapped onto the sphere" : "GLOBDATA latitude bytes (load MAP.HSQ to wrap the real terrain)"} via ${globe ? "the GLOBDATA longitude ramps" : "a geometric sphere projection (load GLOBDATA.HSQ for the engine ramps)"}${scaleCurve ? " + the real TABLAT foreshortening" : ""}, desert palette + limb shading. Geometry validated (TABLAT); exact ASM orientation/palette (sub_1BA75) still unpublished.`}
           </div>
         </Panel>
       )}

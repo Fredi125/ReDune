@@ -22,7 +22,7 @@ import { parseDat, extractFile, buildDat, rebuildDat } from "../src/codecs/dat";
 import { loadGradientTables, loadGlobe } from "../src/codecs/globdata";
 import { parseTablat } from "../src/codecs/tablat";
 import { HnmFile } from "../src/codecs/hnm";
-import { loadHerad, parseTrackEvents, parseHerad, encodeHerad, writeInstrument, parseInstruments, type HeradInstrument } from "../src/codecs/herad";
+import { loadHerad, parseTrackEvents, parseHerad, encodeHerad, writeInstrument, parseInstruments, OPL_MULT, type HeradInstrument } from "../src/codecs/herad";
 import { OPL2, programChannel, noteOn, renderHeradOpl2 } from "../src/audio/opl2";
 import { decodeVoc, encodeVoc, vocToWav, wavToSamples } from "../src/codecs/voc";
 import { heatmapColor, detectMapWidth, planetColor, planetPaletteIndex, decodeMap } from "../src/codecs/map";
@@ -825,7 +825,7 @@ console.log("\nOPL2 synth:");
   const renderNote = (it: HeradInstrument, note: number) => {
     const opl = new OPL2(SR);
     programChannel(opl, 0, it);
-    noteOn(opl, 0, note);
+    noteOn(opl, 0, note, OPL_MULT[it.carMul] ?? 1);
     const n = Math.floor(SR * 0.4);
     const out = new Float32Array(n);
     for (let i = 0; i < n; i++) out[i] = opl.generate();
@@ -852,6 +852,10 @@ console.log("\nOPL2 synth:");
   ok("OPL2 pure tone non-silent @ ~440Hz", rms > 0.05 && Math.abs(f0(a4) - 440) < 12, `f0=${f0(a4).toFixed(1)}Hz rms=${rms.toFixed(2)}`);
   const a5 = renderNote(mkInst({}), 81); // A5 = 880 Hz
   ok("OPL2 octave ratio == 2", Math.abs(f0(a5) / f0(a4) - 2) < 0.05, `A4=${f0(a4).toFixed(0)} A5=${f0(a5).toFixed(0)}`);
+  // carMul normalisation: a carrier MULT≠1 must NOT transpose the voice (it would
+  // scramble Dune's arrangement). Note 69 still sounds ~440 Hz with carMul=4.
+  const a4m4 = renderNote(mkInst({ carMul: 4 }), 69);
+  ok("OPL2 carMul!=1 stays at written pitch", Math.abs(f0(a4m4) - 440) < 14, `carMul4 f0=${f0(a4m4).toFixed(1)}Hz (not ${(440 * 4)}Hz)`);
   const noFb = bright(renderNote(mkInst({ modOut: 0, feedback: 0 }), 57));
   const fb7 = bright(renderNote(mkInst({ modOut: 0, feedback: 7 }), 57));
   ok("OPL2 feedback brightens timbre", fb7 > noFb * 1.5, `no-fb=${noFb.toFixed(2)} fb7=${fb7.toFixed(2)}`);

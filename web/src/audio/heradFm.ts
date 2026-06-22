@@ -67,8 +67,15 @@ export function playFmNote(
   t0: number,
   t1: number,
 ): number {
-  const carFreq = freq * (OPL_MULT[inst.carMul] ?? 1);
-  const modFreq = freq * (OPL_MULT[inst.modMul] ?? 1);
+  // The carrier sounds at the note's written pitch; the modulator keeps the
+  // patch's modulator:carrier MULT ratio (so the FM timbre is unchanged) instead
+  // of multiplying the carrier's pitch by carMul. Dune's patches use carMul≠1 on
+  // most voices, and a literal carrier·carMul scrambles the octaves (see opl2.ts
+  // noteToFreqReg). carMul of 0 → OPL 0.5×.
+  const carMulV = OPL_MULT[inst.carMul] ?? 1;
+  const modMulV = OPL_MULT[inst.modMul] ?? 1;
+  const carFreq = freq;
+  const modFreq = freq * (modMulV / (carMulV || 1));
   const carBase = 1 - inst.carOut / 63;
   const velScale = inst.carOutVel !== 0 ? 0.3 + 0.7 * (vel / 127) : 1;
   const peak = Math.max(0.0001, Math.min(1, carBase) * velScale * 0.26);
