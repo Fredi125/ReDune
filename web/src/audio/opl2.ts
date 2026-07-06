@@ -410,10 +410,12 @@ export const DEFAULT_SYNTH_PARAMS: SynthParams = {
 };
 
 /**
- * Offline-render a whole HERAD song to a mono Float32Array at `sampleRate`,
- * driving the OPL2 with real register writes. Voices are allocated across the
- * chip's 9 channels (oldest stolen when oversubscribed), matching hardware.
- * `params` are the Music-tab tuning knobs (tempo is separate, via `bpm`).
+ * Offline-render a HERAD song to a mono Float32Array at `sampleRate`, driving
+ * the OPL2 with real register writes. Voices are allocated across the chip's 9
+ * channels (oldest stolen when oversubscribed), matching hardware. `params` are
+ * the Music-tab tuning knobs (tempo is separate, via `bpm`). `startSec` seeks in
+ * and `maxSeconds` bounds the window length, so a live re-tune can re-render a
+ * few seconds around the playhead instead of the whole (2–4 s to render) song.
  */
 export function renderHeradOpl2(
   tracks: { data: Uint8Array }[],
@@ -424,6 +426,7 @@ export function renderHeradOpl2(
   ticksPerQuarter: number,
   maxSeconds = 240,
   params: SynthParams = DEFAULT_SYNTH_PARAMS,
+  startSec = 0,
 ): Float32Array {
   const tick = 60 / bpm / ticksPerQuarter;
   const notes: NoteInst[] = [];
@@ -445,10 +448,17 @@ export function renderHeradOpl2(
   }
   if (notes.length === 0) return new Float32Array(0);
 
-  let dur = 0;
-  for (const n of notes) dur = Math.max(dur, n.end);
-  dur = Math.min(maxSeconds, dur + 0.6);
-  const total = Math.ceil(dur * sampleRate);
+  // Render the window [t0, winEnd). With startSec=0 this is the whole song (the
+  // default); a positive startSec seeks in (notes already sounding are re-keyed
+  // at the window start), and maxSeconds bounds the window length — so live
+  // tuning can re-render just a few seconds around the playhead instead of the
+  // whole 2–4 s song.
+  let songEnd = 0;
+  for (const n of notes) songEnd = Math.max(songEnd, n.end);
+  const t0 = Math.max(0, startSec);
+  const winEnd = Math.min(songEnd + 0.6, t0 + maxSeconds);
+  if (winEnd <= t0) return new Float32Array(0);
+  const total = Math.ceil((winEnd - t0) * sampleRate);
   const out = new Float32Array(total);
 
   const ons = [...notes].map((n, i) => ({ ...n, id: i })).sort((a, b) => a.start - b.start);
@@ -462,12 +472,37 @@ export function renderHeradOpl2(
   opl.envScale = params.envScale;
   opl.feedbackScale = params.feedbackScale;
   const carMulOf = (inst?: HeradInstrument) => (params.carrierLiteral ? 1 : inst ? MULT[inst.carMul] : 1);
+  const DEFAULT = insts[0];
+  const alloc = (): number => {
+    for (let c = 0; c < 9; c++) if (chNote[c] < 0) return c;
+    let ch = 0;
+    for (let c = 1; c < 9; c++) if (chFreeAt[c] < chFreeAt[ch]) ch = c;
+    return ch; // steal the channel idle longest / oldest
+  };
+  const keyOn = (n: NoteInst & { id: number }): void => {
+    const inst = insts[n.instIdx] ?? DEFAULT;
+    if (!inst) return;
+    const ch = alloc();
+    programChannel(opl, ch, inst, params.egMode);
+    noteOn(opl, ch, n.note + params.transpose, carMulOf(inst));
+    chOfNote[n.id] = ch;
+    chNote[ch] = n.note;
+    chFreeAt[ch] = Infinity;
+  };
+
   let oi = 0; // next on
   let fi = 0; // next off
+  if (t0 > 0) {
+    // seek: sound the notes already playing at the window start, then skip past
+    // every event before it.
+    for (const n of ons) if (n.start < t0 && n.end > t0) keyOn(n);
+    while (oi < ons.length && ons[oi].start < t0) oi++;
+    while (fi < offs.length && offs[fi].end <= t0) fi++;
+  }
+
   let peak = 1e-6;
-  const DEFAULT = insts[0];
   for (let s = 0; s < total; s++) {
-    const t = s / sampleRate;
+    const t = t0 + s / sampleRate;
     // key-offs first so a freed channel can be reused this sample
     while (fi < offs.length && offs[fi].end <= t) {
       const n = offs[fi++];
@@ -478,24 +513,7 @@ export function renderHeradOpl2(
         chNote[ch] = -1;
       }
     }
-    while (oi < ons.length && ons[oi].start <= t) {
-      const n = ons[oi++];
-      // pick an idle channel, else steal the one idle longest / oldest
-      let ch = -1;
-      for (let c = 0; c < 9; c++) if (chNote[c] < 0) { ch = c; break; }
-      if (ch < 0) {
-        ch = 0;
-        for (let c = 1; c < 9; c++) if (chFreeAt[c] < chFreeAt[ch]) ch = c;
-      }
-      const inst = insts[n.instIdx] ?? DEFAULT;
-      if (inst) {
-        programChannel(opl, ch, inst, params.egMode);
-        noteOn(opl, ch, n.note + params.transpose, carMulOf(inst));
-        chOfNote[n.id] = ch;
-        chNote[ch] = n.note;
-        chFreeAt[ch] = Infinity;
-      }
-    }
+    while (oi < ons.length && ons[oi].start <= t) keyOn(ons[oi++]);
     const v = opl.generate();
     out[s] = v;
     const a = v < 0 ? -v : v;

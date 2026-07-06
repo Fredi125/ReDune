@@ -908,6 +908,12 @@ console.log("\nOPL2 synth:");
     let energy = 0;
     for (const v of buf) energy += v * v;
     ok("OPL2 renders a real HERAD song", buf.length > SR && energy / buf.length > 1e-4, `${(buf.length / SR).toFixed(1)}s, rms=${Math.sqrt(energy / buf.length).toFixed(3)}`);
+    // Windowed live-tune render: seek 4 s in, render a bounded 3 s window. Must be
+    // ~3 s long (not the whole song) and non-silent (the seek re-keys active notes).
+    const rms = (b: Float32Array) => { let s = 0; for (const v of b) s += v * v; return Math.sqrt(s / Math.max(1, b.length)); };
+    const win = renderHeradOpl2(L.info.tracks, L.info.format, L.instruments, 120, SR, 120, 3, undefined, 4);
+    const winLen = win.length / SR;
+    ok("OPL2 windowed re-render seeks + bounds length", winLen > 2.5 && winLen < 3.6 && rms(win) > 0.01, `${winLen.toFixed(1)}s window, rms=${rms(win).toFixed(3)}`);
   } else {
     skip("OPL2 song render", "no HERAD file present");
   }

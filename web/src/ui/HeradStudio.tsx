@@ -9,6 +9,7 @@ import { useIncoming } from "./routing";
 const FMT_LABEL: Record<string, string> = { OPL2: "OPL2 / AdLib", AGD: "Tandy / PCjr", M32: "Roland MT-32" };
 const TPQ = 120;
 const MAX_VOICES = 6000;
+const TUNE_WINDOW = 12; // seconds re-rendered (and looped) per live OPL2 re-tune — keeps tweaks snappy
 
 // Fallback patch for files with no OPL instrument block (e.g. M32).
 const DEFAULT_INST: HeradInstrument = {
@@ -21,8 +22,10 @@ const DEFAULT_INST: HeradInstrument = {
 
 /**
  * One tuning control: a slider for feel + a typeable numeric field for
- * precision (arrow keys / spinner step, type an exact value), with the unit
- * shown alongside and double-click-the-name to reset to the default.
+ * precision. The value is only *committed* to the parent (which reprocesses the
+ * song) when the edit finishes — releasing the slider, or blurring / pressing
+ * Enter in the field — so dragging or typing doesn't lag from per-step
+ * re-renders. A local draft drives the live display until then.
  */
 function Knob(props: {
   label: string; value: number; min: number; max: number; step?: number;
@@ -30,22 +33,36 @@ function Knob(props: {
   disabled?: boolean; accent?: boolean;
 }) {
   const step = props.step ?? 1;
-  const [buf, setBuf] = useState<string | null>(null); // raw text while typing (keeps decimals intact)
-  const set = (v: number) => props.onChange(Math.min(props.max, Math.max(props.min, +v.toFixed(4))));
+  const clamp = (v: number) => Math.min(props.max, Math.max(props.min, +v.toFixed(4)));
+  const [draft, setDraft] = useState(props.value); // live position while interacting
+  const [txt, setTxt] = useState<string | null>(null); // raw typed text (keeps decimals intact)
+  const editing = txt !== null;
+  // Re-sync the draft when the applied value changes externally (preset/reset/other engine),
+  // but not while the field is being typed into.
+  useEffect(() => { if (!editing) setDraft(props.value); }, [props.value, editing]);
+  const commit = (v: number) => props.onChange(clamp(v)); // -> parent state -> reprocess
+  const shown = editing ? txt! : String(draft);
   return (
     <div className={"knob" + (props.disabled ? " off" : "")} title={props.title}>
-      <span className="knob-l" onDoubleClick={() => props.def !== undefined && set(props.def)} title={props.def !== undefined ? "Double-click to reset" : props.title}>
+      <span className="knob-l" onDoubleClick={() => props.def !== undefined && commit(props.def)} title={props.def !== undefined ? "Double-click to reset" : props.title}>
         {props.label}
       </span>
-      <input type="range" min={props.min} max={props.max} step={step} value={props.value} disabled={props.disabled} onChange={(e) => set(+e.target.value)} />
+      <input
+        type="range" min={props.min} max={props.max} step={step} value={draft} disabled={props.disabled}
+        onChange={(e) => setDraft(+e.target.value)} /* visual only — no reprocess */
+        onPointerUp={(e) => commit(+e.currentTarget.value)} /* commit on release */
+        onKeyUp={(e) => commit(+e.currentTarget.value)} /* arrow-key adjust */
+        onBlur={(e) => commit(+e.currentTarget.value)}
+      />
       <span className="knob-vc">
         <input
-          type="number" className="knob-n" min={props.min} max={props.max} step={step} disabled={props.disabled}
-          value={buf ?? String(props.value)}
+          type="text" inputMode="decimal" className="knob-n" disabled={props.disabled}
+          value={shown}
           style={props.accent && !props.disabled ? { color: "var(--amber)" } : undefined}
-          onFocus={(e) => e.currentTarget.select()}
-          onChange={(e) => { setBuf(e.target.value); const v = parseFloat(e.target.value); if (!Number.isNaN(v)) set(v); }}
-          onBlur={() => setBuf(null)}
+          onFocus={(e) => { setTxt(String(props.value)); e.currentTarget.select(); }}
+          onChange={(e) => { setTxt(e.target.value); const v = parseFloat(e.target.value); if (!Number.isNaN(v)) setDraft(clamp(v)); }}
+          onKeyDown={(e) => { if (e.key === "Enter") (e.target as HTMLInputElement).blur(); }}
+          onBlur={(e) => { const v = parseFloat(e.currentTarget.value); commit(Number.isNaN(v) ? props.value : v); setTxt(null); }} /* commit on leaving the field */
         />
         {props.unit && <span className="knob-u">{props.unit}</span>}
       </span>
@@ -74,7 +91,8 @@ export function HeradStudio() {
   const [rendering, setRendering] = useState(false);
   const ctxRef = useRef<AudioContext | null>(null);
   const stopTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const playRef = useRef<{ startCtxTime: number; fromSec: number } | null>(null);
+  const playRef = useRef<{ startCtxTime: number; fromSec: number; windowed: boolean } | null>(null);
+  const [looping, setLooping] = useState(false); // OPL2 windowed tuning-loop active
   const genRef = useRef(0); // bumps on every stop/start so a superseded async render aborts
   const [insts, setInsts] = useState<HeradInstrument[]>([]);
   const [selInst, setSelInst] = useState(0);
@@ -158,9 +176,11 @@ export function HeradStudio() {
     stopTimer.current = setTimeout(stop, 1100);
   };
 
-  // Offline-render the whole song through the faithful OPL2 core and play it,
-  // optionally starting `fromSec` in (so live re-tuning keeps your place).
-  const startOpl2 = async (fromSec = 0) => {
+  // Render through the faithful OPL2 core and play it. `windowed` re-renders only
+  // a short window from `fromSec` and loops it — used for live re-tuning, so each
+  // tweak reprocesses ~12 s instead of the whole (2–4 s to render) song. A full
+  // Play renders the whole song from `fromSec`.
+  const startOpl2 = async (fromSec = 0, windowed = false) => {
     if (!loaded) return;
     stop();
     const gen = genRef.current;
@@ -171,26 +191,30 @@ export function HeradStudio() {
       const ctx = new AudioContext();
       ctxRef.current = ctx;
       const insArr = insts.length ? insts : [DEFAULT_INST];
-      const data = renderHeradOpl2(loaded.info.tracks, loaded.info.format, insArr, bpm, ctx.sampleRate, TPQ, 240, tune);
+      const startSec = windowed ? fromSec : 0;
+      const lenSec = windowed ? TUNE_WINDOW : 240;
+      const data = renderHeradOpl2(loaded.info.tracks, loaded.info.format, insArr, bpm, ctx.sampleRate, TPQ, lenSec, tune, startSec);
       setRendering(false);
       if (data.length === 0) {
         stop();
         return;
       }
       const dur = data.length / ctx.sampleRate;
-      const off = Math.min(Math.max(0, fromSec), Math.max(0, dur - 0.05));
+      const off = windowed ? 0 : Math.min(Math.max(0, fromSec), Math.max(0, dur - 0.05));
       const buf = ctx.createBuffer(1, data.length, ctx.sampleRate);
       buf.getChannelData(0).set(data);
       const src = ctx.createBufferSource();
       src.buffer = buf;
+      src.loop = windowed; // loop the window while tuning
       const master = ctx.createGain();
       master.gain.value = 0.9;
       src.connect(master);
       master.connect(ctx.destination);
       src.start(0, off);
-      playRef.current = { startCtxTime: ctx.currentTime, fromSec: off };
+      playRef.current = { startCtxTime: ctx.currentTime, fromSec: windowed ? fromSec : off, windowed };
       setPlaying(true);
-      stopTimer.current = setTimeout(stop, (dur - off + 0.3) * 1000);
+      setLooping(windowed);
+      if (!windowed) stopTimer.current = setTimeout(stop, (dur - off + 0.3) * 1000);
     } catch (e) {
       setRendering(false);
       setError(String(e));
@@ -217,6 +241,7 @@ export function HeradStudio() {
     playRef.current = null;
     setRendering(false);
     setPlaying(false);
+    setLooping(false);
   };
 
   // Live WebAudio FM playback (schedules per note), from `fromSec` into the song.
@@ -269,18 +294,22 @@ export function HeradStudio() {
       }
     }
 
-    playRef.current = { startCtxTime: ctx.currentTime, fromSec };
+    playRef.current = { startCtxTime: ctx.currentTime, fromSec, windowed: false };
     setPlaying(true);
     stopTimer.current = setTimeout(stop, Math.max(500, (maxEnd - ctx.currentTime + 0.3) * 1000));
   };
 
-  const begin = (fromSec = 0) => (engine === "opl2" ? startOpl2(fromSec) : startWeb(fromSec));
+  // WebAudio schedules per note (cheap), so it never needs windowing; OPL2 loops
+  // a short window for live re-tune. `windowed` only affects the OPL2 path.
+  const begin = (fromSec = 0, windowed = false) => (engine === "opl2" ? startOpl2(fromSec, windowed) : startWeb(fromSec));
 
-  /** Song-seconds elapsed at the current instant (for position-preserving re-tune). */
+  /** Song-seconds to re-render from on a live re-tune. A windowed OPL2 loop stays
+   *  locked to its window start; otherwise it's the live playhead position. */
   const currentPos = () => {
     const pr = playRef.current;
     const ctx = ctxRef.current;
     if (!pr || !ctx) return 0;
+    if (pr.windowed) return pr.fromSec; // keep tuning the same looped section
     return pr.fromSec + (ctx.currentTime - pr.startCtxTime);
   };
 
@@ -293,7 +322,7 @@ export function HeradStudio() {
   useEffect(() => {
     if (!playing) return;
     const pos = currentPos();
-    const id = setTimeout(() => begin(pos), 250);
+    const id = setTimeout(() => begin(pos, true), 120); // windowed: re-render just the section under the playhead
     return () => clearTimeout(id);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [bpm, tune, insts]);
@@ -319,7 +348,8 @@ export function HeradStudio() {
                 <option value="opl2">OPL2 (faithful)</option>
                 <option value="webaudio">WebAudio FM</option>
               </select>
-              <button className="btn primary" disabled={rendering} onClick={() => (playing ? stop() : begin(0))}>{rendering ? "⏳ rendering…" : playing ? "■ Stop" : "▶ Play"}</button>
+              <button className="btn primary" disabled={rendering} onClick={() => (playing ? stop() : begin(0, false))}>{rendering ? "⏳ rendering…" : playing ? "■ Stop" : "▶ Play"}</button>
+              {looping && <button className="btn small" title="Playing a looped section for quick tuning. Click for full-song playback from the start." onClick={() => begin(0, false)}>▶ full song</button>}
               <button className="btn" onClick={() => downloadBytes(name.replace(/\.[^.]+$/, "") + ".mid", loaded.midi)}>⤓ MIDI</button>
               {edited && <Tag color="var(--amber)">edited</Tag>}
               <button className="btn primary" onClick={exportFile} title="Re-encode (byte-identical when unedited) and re-compress to HSQ">⤓ Export {loaded.wasHsq ? ".HSQ" : "file"}</button>
@@ -334,7 +364,7 @@ export function HeradStudio() {
 
           <div className="tune-panel">
             <div className="row" style={{ justifyContent: "space-between", marginBottom: 8, alignItems: "baseline" }}>
-              <b className="small">🎛 Live tuning{playing ? <span className="muted" style={{ fontWeight: 400 }}> · drag to hear changes in place</span> : <span className="muted" style={{ fontWeight: 400 }}> · press ▶ Play, then tweak</span>}</b>
+              <b className="small">🎛 Live tuning{looping ? <span className="muted" style={{ fontWeight: 400 }}> · 🔁 looping a {TUNE_WINDOW}s section — tweaks reprocess just this bit</span> : playing ? <span className="muted" style={{ fontWeight: 400 }}> · applies when you release / press Enter</span> : <span className="muted" style={{ fontWeight: 400 }}> · press ▶ Play, then tweak</span>}</b>
               <div className="row small" style={{ gap: 4 }}>
                 {TUNE_PRESETS.map((p) => (
                   <button key={p.name} className="btn small" title={p.title} onClick={() => setTune({ ...DEFAULT_SYNTH_PARAMS, ...p.p })}>{p.name}</button>
@@ -351,7 +381,7 @@ export function HeradStudio() {
               <Knob label="feedback" value={tune.feedbackScale} min={0} max={2} step={0.05} unit="×" def={1} disabled={engine === "webaudio"} onChange={(v) => setTuneField("feedbackScale", v)} title="Modulator self-feedback scale — adds grit/edge. (OPL2 engine)" />
             </div>
             <div className="small muted" style={{ marginTop: 6, opacity: 0.8 }}>
-              Drag a slider, or click a number to type an exact value (↑/↓ arrows nudge). Double-click a knob's name to reset it.
+              Drag a slider (applies on release), or click a number to type an exact value then press Enter. ↑/↓ arrows nudge; double-click a knob's name to reset it. The song only reprocesses once you finish, so editing stays smooth.
             </div>
             <div className="row small" style={{ gap: 14, marginTop: 8 }}>
               <label className="muted" title="Carrier at the written pitch (recommended, in-tune) vs. literal chip behaviour where the carrier MULT multiplies pitch — authentic but many voices leap octaves.">
@@ -432,15 +462,16 @@ export function HeradStudio() {
             </div>
           )}
           <div className="small muted" style={{ marginTop: 10 }}>
-            <b>🎛 Live tuning</b> lets you dial the song in yourself — while it plays, dragging any slider re-renders from the
-            current spot, so you hear the change without losing your place (tempo, transpose &amp; volume work on both engines;
-            envelope &amp; feedback are OPL2-only). The <b>carrier pitch</b> and <b>envelope type</b> selectors let you A/B our
-            two interpretive calls: carrier-at-written-pitch vs. the literal chip MULT, and per-patch vs. forced envelopes.
-            Presets are just starting points. <b>▶ Play</b> drives the decoded <b>OPL2 instrument patches</b>: <b>OPL2 (faithful)</b>{" "}
-            is a sample-accurate YM3812 software synth (real register writes from the <code>DNADL</code> disasm, modulator
-            self-feedback, the four OPL2 waveforms, FM/additive routing, per-operator ADSR); <b>WebAudio FM</b> is the older
-            lightweight approximation. <b>⤓ MIDI</b> exports a Standard MIDI File. Edits to the FM patches below also feed
-            playback live.
+            <b>🎛 Live tuning</b> lets you dial the song in yourself. A value is only applied when you finish editing it
+            (release the slider, or press Enter / leave the field), so editing stays smooth. On the faithful OPL2 engine each
+            change reprocesses only a <b>{TUNE_WINDOW}-second window</b> under the playhead and <b>loops</b> it — so tweaks are
+            near-instant instead of re-rendering the whole 2–4&nbsp;s song; hit <b>▶ full song</b> to play it through.
+            (WebAudio FM schedules per note, so it re-tunes instantly and doesn't loop.) The <b>carrier pitch</b> and{" "}
+            <b>envelope type</b> selectors let you A/B our two interpretive calls (carrier-at-written-pitch vs. the literal chip
+            MULT; per-patch vs. forced envelopes); presets are just starting points. <b>OPL2 (faithful)</b> is a sample-accurate
+            YM3812 software synth (real register writes from the <code>DNADL</code> disasm, modulator self-feedback, the four
+            OPL2 waveforms, FM/additive routing, per-operator ADSR). <b>⤓ MIDI</b> exports a Standard MIDI File. FM-patch edits
+            below also feed playback live.
           </div>
         </Panel>
       )}
