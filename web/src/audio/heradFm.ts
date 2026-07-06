@@ -54,6 +54,14 @@ export function midiToFreq(note: number): number {
   return 440 * Math.pow(2, (note - 69) / 12);
 }
 
+/** Per-voice tuning knobs (the Music-tab sliders the WebAudio engine honors). */
+export interface FmTuning {
+  fmDepth: number; // FM modulation index scale
+  carrierLiteral: boolean; // apply carrier MULT to pitch (hardware) vs. keep it at the written pitch
+  egMode: "faithful" | "sustain" | "pluck"; // envelope-type override
+}
+const DEFAULT_FM_TUNING: FmTuning = { fmDepth: 1, carrierLiteral: false, egMode: "faithful" };
+
 /**
  * Schedule one FM note. Returns the time (s) at which it finishes.
  */
@@ -66,16 +74,17 @@ export function playFmNote(
   vel: number,
   t0: number,
   t1: number,
+  tuning: FmTuning = DEFAULT_FM_TUNING,
 ): number {
-  // The carrier sounds at the note's written pitch; the modulator keeps the
-  // patch's modulator:carrier MULT ratio (so the FM timbre is unchanged) instead
-  // of multiplying the carrier's pitch by carMul. Dune's patches use carMul≠1 on
-  // most voices, and a literal carrier·carMul scrambles the octaves (see opl2.ts
-  // noteToFreqReg). carMul of 0 → OPL 0.5×.
+  // By default the carrier sounds at the note's written pitch and the modulator
+  // keeps the patch's modulator:carrier MULT ratio (timbre unchanged) — Dune's
+  // carMul≠1 voices scramble octaves if applied literally (see opl2 noteToFreqReg).
+  // `carrierLiteral` restores the raw hardware behaviour. carMul 0 → OPL 0.5×.
   const carMulV = OPL_MULT[inst.carMul] ?? 1;
   const modMulV = OPL_MULT[inst.modMul] ?? 1;
-  const carFreq = freq;
-  const modFreq = freq * (modMulV / (carMulV || 1));
+  const carFreq = tuning.carrierLiteral ? freq * carMulV : freq;
+  const modFreq = tuning.carrierLiteral ? freq * modMulV : freq * (modMulV / (carMulV || 1));
+  const carEg = tuning.egMode === "sustain" ? true : tuning.egMode === "pluck" ? false : inst.carEgType;
   const carBase = 1 - inst.carOut / 63;
   const velScale = inst.carOutVel !== 0 ? 0.3 + 0.7 * (vel / 127) : 1;
   const peak = Math.max(0.0001, Math.min(1, carBase) * velScale * 0.26);
@@ -94,7 +103,7 @@ export function playFmNote(
   g.setValueAtTime(0.0001, t0);
   g.exponentialRampToValueAtTime(peak, t0 + aT);
   g.exponentialRampToValueAtTime(Math.max(0.0001, peak * sLvl), t0 + aT + dT);
-  if (inst.carEgType) {
+  if (carEg) {
     // sustaining: hold at the sustain level until note-off, then release
     g.setValueAtTime(Math.max(0.0001, peak * sLvl), rel);
     g.exponentialRampToValueAtTime(0.0001, rel + rT);
@@ -116,7 +125,7 @@ export function playFmNote(
 
   if (inst.con > 0) {
     // FM: modulator drives the carrier's frequency
-    const depth = carFreq * 7 * Math.max(0, modBase);
+    const depth = carFreq * 7 * Math.max(0, modBase) * tuning.fmDepth;
     const mg = modGain.gain;
     mg.setValueAtTime(0, t0);
     mg.linearRampToValueAtTime(depth, t0 + mA);

@@ -878,6 +878,24 @@ console.log("\nOPL2 synth:");
   const perc = tailRms(renderHeld(mkInst({ ...egp, carEgType: false })));
   const sust = tailRms(renderHeld(mkInst({ ...egp, carEgType: true })));
   ok("OPL2 EG-type: percussive decays, sustaining holds", perc < sust * 0.5, `perc tail=${perc.toFixed(4)} sust tail=${sust.toFixed(4)}`);
+  // Tuning knobs: egMode override forces a sustaining patch to decay; envScale
+  // stretches the envelope so a percussive voice holds energy longer.
+  const renderHeldT = (it: HeradInstrument, egMode: "faithful" | "sustain" | "pluck", envScale = 1) => {
+    const opl = new OPL2(SR);
+    opl.envScale = envScale;
+    programChannel(opl, 0, it, egMode);
+    noteOn(opl, 0, 69, OPL_MULT[it.carMul] ?? 1);
+    const n = Math.floor(SR * 0.6);
+    const out = new Float32Array(n);
+    for (let i = 0; i < n; i++) out[i] = opl.generate();
+    return out;
+  };
+  const forcedPluck = tailRms(renderHeldT(mkInst({ ...egp, carEgType: true }), "pluck"));
+  const keptSust = tailRms(renderHeldT(mkInst({ ...egp, carEgType: true }), "faithful"));
+  ok("OPL2 egMode 'pluck' overrides a sustaining patch", forcedPluck < keptSust * 0.5, `pluck=${forcedPluck.toFixed(4)} faithful=${keptSust.toFixed(4)}`);
+  const envShort = tailRms(renderHeldT(mkInst({ ...egp, carEgType: false }), "faithful", 1));
+  const envLong = tailRms(renderHeldT(mkInst({ ...egp, carEgType: false }), "faithful", 3));
+  ok("OPL2 envScale stretches the envelope", envLong > envShort * 2, `1x=${envShort.toFixed(4)} 3x=${envLong.toFixed(4)}`);
   const noFb = bright(renderNote(mkInst({ modOut: 0, feedback: 0 }), 57));
   const fb7 = bright(renderNote(mkInst({ modOut: 0, feedback: 7 }), 57));
   ok("OPL2 feedback brightens timbre", fb7 > noFb * 1.5, `no-fb=${noFb.toFixed(2)} fb7=${fb7.toFixed(2)}`);

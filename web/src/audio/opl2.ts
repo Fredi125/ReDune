@@ -128,6 +128,10 @@ export class OPL2 {
   private readonly chans: Channel[] = [];
   /** EG full-sweep (511 units) reference time at effective-rate 48, in seconds. */
   private static readonly T_REF = 0.006;
+  /** Live tuning knobs (1 = faithful default). Set before/after construction. */
+  fmDepth = 1;
+  envScale = 1;
+  feedbackScale = 1;
 
   constructor(sampleRate: number) {
     this.sr = sampleRate;
@@ -147,7 +151,7 @@ export class OPL2 {
   /** Decay/release: linear-in-dB increment (level units / sample). */
   private linInc(rate: number): number {
     if (rate <= 0) return 0;
-    return (511 / (this.sr * OPL2.T_REF)) * Math.pow(2, (rate - 48) / 4);
+    return (511 / (this.sr * OPL2.T_REF * this.envScale)) * Math.pow(2, (rate - 48) / 4);
   }
 
   /** Recompute an operator's per-sample envelope coefficients for its channel. */
@@ -159,7 +163,7 @@ export class OPL2 {
     if (ar <= 0) {
       op.attMul = 1; // never attacks
     } else {
-      const tA = OPL2.T_REF * Math.pow(2, -(ar - 48) / 4);
+      const tA = OPL2.T_REF * this.envScale * Math.pow(2, -(ar - 48) / 4);
       op.attMul = Math.exp(Math.log(0.5 / 511) / Math.max(1, tA * this.sr));
     }
     op.decInc = this.linInc(dr);
@@ -289,36 +293,37 @@ export class OPL2 {
       const [mod, car] = ch.ops;
       if (mod.state === "off" && car.state === "off") continue;
       // modulator self-feedback: phase mod from its own recent output
-      const fb = ch.fb > 0 ? ((mod.out + mod.prev) * 0.5) * Math.pow(2, ch.fb - 7) : 0;
+      const fb = ch.fb > 0 ? ((mod.out + mod.prev) * 0.5) * Math.pow(2, ch.fb - 7) * this.feedbackScale : 0;
       const mOut = this.runOp(mod, fb);
       if (ch.con) {
         // additive: both operators sound directly
         acc += (this.runOp(car, 0) + mOut) * 0.5;
       } else {
         // FM: modulator output deviates the carrier phase
-        acc += this.runOp(car, mOut * FM_DEPTH);
+        acc += this.runOp(car, mOut * this.fmDepth);
       }
     }
     return acc;
   }
 }
 
-/** Carrier phase deviation (cycles) per unit of modulator output. */
-const FM_DEPTH = 1.0;
-
 // --- high-level helpers: program a channel from a HERAD patch + play notes ---
 
+/** Envelope-type override: keep the patch's bit, or force all voices one way. */
+export type EgMode = "faithful" | "sustain" | "pluck";
+
 /** Write a 2-op HERAD instrument patch into OPL channel `ch`. */
-export function programChannel(opl: OPL2, ch: number, inst: HeradInstrument): void {
+export function programChannel(opl: OPL2, ch: number, inst: HeradInstrument, egMode: EgMode = "faithful"): void {
   const m = SLOT_MOD[ch];
   const c = SLOT_CAR[ch];
+  const egOf = (v: boolean) => (egMode === "sustain" ? true : egMode === "pluck" ? false : v);
   // Real 0x20 byte: EG-type (bit5) + KSR (bit4) + MULT (bits3-0), decoded from
   // the patch (see herad.ts). Most Dune voices are PERCUSSIVE (EG-type 0) — they
   // must decay past the sustain level, not hold — so forcing sustaining (the old
   // shortcut) made plucks/hits drone. AM/VIB (bits 7/6) need the global 0xBD LFO
   // we don't model, so they stay 0.
-  opl.write(0x20 + m, ((inst.modEgType ? 0x20 : 0) | (inst.modKsr ? 0x10 : 0) | (inst.modMul & 0x0f)) & 0xff);
-  opl.write(0x20 + c, ((inst.carEgType ? 0x20 : 0) | (inst.carKsr ? 0x10 : 0) | (inst.carMul & 0x0f)) & 0xff);
+  opl.write(0x20 + m, ((egOf(inst.modEgType) ? 0x20 : 0) | (inst.modKsr ? 0x10 : 0) | (inst.modMul & 0x0f)) & 0xff);
+  opl.write(0x20 + c, ((egOf(inst.carEgType) ? 0x20 : 0) | (inst.carKsr ? 0x10 : 0) | (inst.carMul & 0x0f)) & 0xff);
   opl.write(0x40 + m, inst.modOut & 0x3f);
   opl.write(0x40 + c, inst.carOut & 0x3f);
   opl.write(0x60 + m, ((inst.modA & 0x0f) << 4) | (inst.modD & 0x0f));
@@ -389,10 +394,26 @@ interface NoteInst {
   instIdx: number;
 }
 
+/** Live song-level tuning knobs surfaced in the Music tab. */
+export interface SynthParams {
+  transpose: number; // semitones added to every note
+  fmDepth: number; // FM modulation index scale (brightness)
+  envScale: number; // envelope time scale (>1 = longer notes)
+  feedbackScale: number; // modulator self-feedback scale
+  gain: number; // master output gain
+  carrierLiteral: boolean; // false = carrier at written pitch (musical); true = apply carrier MULT (hardware)
+  egMode: EgMode; // faithful | force sustain | force pluck
+}
+
+export const DEFAULT_SYNTH_PARAMS: SynthParams = {
+  transpose: 0, fmDepth: 1, envScale: 1, feedbackScale: 1, gain: 1, carrierLiteral: false, egMode: "faithful",
+};
+
 /**
  * Offline-render a whole HERAD song to a mono Float32Array at `sampleRate`,
  * driving the OPL2 with real register writes. Voices are allocated across the
  * chip's 9 channels (oldest stolen when oversubscribed), matching hardware.
+ * `params` are the Music-tab tuning knobs (tempo is separate, via `bpm`).
  */
 export function renderHeradOpl2(
   tracks: { data: Uint8Array }[],
@@ -402,6 +423,7 @@ export function renderHeradOpl2(
   sampleRate: number,
   ticksPerQuarter: number,
   maxSeconds = 240,
+  params: SynthParams = DEFAULT_SYNTH_PARAMS,
 ): Float32Array {
   const tick = 60 / bpm / ticksPerQuarter;
   const notes: NoteInst[] = [];
@@ -436,6 +458,10 @@ export function renderHeradOpl2(
   const chNote = new Int32Array(9).fill(-1);
 
   const opl = new OPL2(sampleRate);
+  opl.fmDepth = params.fmDepth;
+  opl.envScale = params.envScale;
+  opl.feedbackScale = params.feedbackScale;
+  const carMulOf = (inst?: HeradInstrument) => (params.carrierLiteral ? 1 : inst ? MULT[inst.carMul] : 1);
   let oi = 0; // next on
   let fi = 0; // next off
   let peak = 1e-6;
@@ -447,8 +473,7 @@ export function renderHeradOpl2(
       const n = offs[fi++];
       const ch = chOfNote[n.id];
       if (ch >= 0 && chNote[ch] === n.note) {
-        const offInst = insts[n.instIdx] ?? DEFAULT;
-        noteOff(opl, ch, n.note, offInst ? MULT[offInst.carMul] : 1);
+        noteOff(opl, ch, n.note + params.transpose, carMulOf(insts[n.instIdx] ?? DEFAULT));
         chFreeAt[ch] = t;
         chNote[ch] = -1;
       }
@@ -464,8 +489,8 @@ export function renderHeradOpl2(
       }
       const inst = insts[n.instIdx] ?? DEFAULT;
       if (inst) {
-        programChannel(opl, ch, inst);
-        noteOn(opl, ch, n.note, MULT[inst.carMul]);
+        programChannel(opl, ch, inst, params.egMode);
+        noteOn(opl, ch, n.note + params.transpose, carMulOf(inst));
         chOfNote[n.id] = ch;
         chNote[ch] = n.note;
         chFreeAt[ch] = Infinity;
@@ -476,8 +501,8 @@ export function renderHeradOpl2(
     const a = v < 0 ? -v : v;
     if (a > peak) peak = a;
   }
-  // normalise to avoid clipping while keeping headroom
-  const g = 0.85 / peak;
+  // normalise to avoid clipping while keeping headroom, then apply master gain
+  const g = (0.85 / peak) * params.gain;
   for (let s = 0; s < total; s++) out[s] *= g;
   return out;
 }

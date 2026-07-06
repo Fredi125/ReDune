@@ -1,8 +1,8 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { encodeHerad, loadHerad, OPL_MULT, parseTrackEvents, writeInstrument, type HeradInstrument, type HeradLoad } from "../codecs/herad";
 import { hsqCompress } from "../codecs/compression";
-import { midiToFreq, oplWaves, playFmNote } from "../audio/heradFm";
-import { OPL2, noteOff, noteOn, programChannel, renderHeradOpl2 } from "../audio/opl2";
+import { midiToFreq, oplWaves, playFmNote, type FmTuning } from "../audio/heradFm";
+import { OPL2, noteOff, noteOn, programChannel, renderHeradOpl2, DEFAULT_SYNTH_PARAMS, type SynthParams } from "../audio/opl2";
 import { downloadBytes, hex, LoadBar, NumberField, Panel, Tag } from "./shared";
 import { useIncoming } from "./routing";
 
@@ -19,19 +19,48 @@ const DEFAULT_INST: HeradInstrument = {
   modEgType: true, carEgType: true, modKsr: false, carKsr: false,
 };
 
+/** One labelled slider with a live value read-out. */
+function Knob(props: { label: string; value: number; min: number; max: number; step?: number; onChange: (v: number) => void; fmt?: (v: number) => string; title?: string; accent?: boolean; disabled?: boolean }) {
+  return (
+    <label className="knob" title={props.title} style={props.disabled ? { opacity: 0.4 } : undefined}>
+      <span className="knob-l">{props.label}</span>
+      <input type="range" min={props.min} max={props.max} step={props.step ?? 1} value={props.value} disabled={props.disabled} onChange={(e) => props.onChange(+e.target.value)} />
+      <span className="knob-v" style={props.accent && !props.disabled ? { color: "var(--amber)" } : undefined}>{props.fmt ? props.fmt(props.value) : String(props.value)}</span>
+    </label>
+  );
+}
+
+const x1 = (v: number) => `${v > 0 ? "+" : ""}${v}`;
+const pct = (v: number) => `${Math.round(v * 100)}%`;
+const mul = (v: number) => `${v.toFixed(2)}×`;
+
+// One-click starting points that bias the honest-but-tunable synth knobs.
+const TUNE_PRESETS: { name: string; title: string; p: Partial<SynthParams> }[] = [
+  { name: "Faithful", title: "Decoded defaults — carrier at written pitch, real EG-type", p: {} },
+  { name: "Bright", title: "More FM depth + feedback: sharper, buzzier timbre", p: { fmDepth: 1.6, feedbackScale: 1.4 } },
+  { name: "Mellow", title: "Less FM, longer envelopes: softer, rounder", p: { fmDepth: 0.6, envScale: 1.5 } },
+  { name: "Hardware", title: "Literal chip behaviour: carrier MULT applied to pitch (voices leap octaves)", p: { carrierLiteral: true } },
+  { name: "Organ", title: "Force sustaining envelopes — everything holds", p: { egMode: "sustain" } },
+  { name: "Pluck", title: "Force percussive envelopes — everything decays", p: { egMode: "pluck" } },
+];
+
 export function HeradStudio() {
   const [name, setName] = useState("");
   const [loaded, setLoaded] = useState<HeradLoad | null>(null);
   const [error, setError] = useState("");
   const [bpm, setBpm] = useState(120);
+  const [tune, setTune] = useState<SynthParams>(DEFAULT_SYNTH_PARAMS);
   const [playing, setPlaying] = useState(false);
   const [engine, setEngine] = useState<"opl2" | "webaudio">("opl2");
   const [rendering, setRendering] = useState(false);
   const ctxRef = useRef<AudioContext | null>(null);
   const stopTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const playRef = useRef<{ startCtxTime: number; fromSec: number } | null>(null);
+  const genRef = useRef(0); // bumps on every stop/start so a superseded async render aborts
   const [insts, setInsts] = useState<HeradInstrument[]>([]);
   const [selInst, setSelInst] = useState(0);
   const [edited, setEdited] = useState(false);
+  const setTuneField = <K extends keyof SynthParams>(k: K, v: SynthParams[K]) => setTune((t) => ({ ...t, [k]: v }));
 
   const load = (n: string, bytes: Uint8Array) => {
     stop();
@@ -73,17 +102,21 @@ export function HeradStudio() {
     stop();
     const ctx = new AudioContext();
     ctxRef.current = ctx;
+    const note = 60 + tune.transpose;
     if (engine === "opl2") {
       // Render a short note through the real OPL2 core and play the buffer.
       const opl = new OPL2(ctx.sampleRate);
-      programChannel(opl, 0, ins);
-      const cm = OPL_MULT[ins.carMul] ?? 1;
-      noteOn(opl, 0, 60, cm);
+      opl.fmDepth = tune.fmDepth;
+      opl.envScale = tune.envScale;
+      opl.feedbackScale = tune.feedbackScale;
+      programChannel(opl, 0, ins, tune.egMode);
+      const cm = tune.carrierLiteral ? 1 : OPL_MULT[ins.carMul] ?? 1;
+      noteOn(opl, 0, note, cm);
       const n = Math.floor(ctx.sampleRate * 0.75);
       const arr = new Float32Array(n);
       const offAt = Math.floor(n * 0.6);
       for (let i = 0; i < n; i++) {
-        if (i === offAt) noteOff(opl, 0, 60, cm);
+        if (i === offAt) noteOff(opl, 0, note, cm);
         arr[i] = opl.generate();
       }
       const buf = ctx.createBuffer(1, n, ctx.sampleRate);
@@ -97,30 +130,36 @@ export function HeradStudio() {
       src.start();
     } else {
       const master = ctx.createGain();
-      master.gain.value = 0.5;
+      master.gain.value = 0.5 * tune.gain;
       master.connect(ctx.destination);
       const t0 = ctx.currentTime + 0.05;
-      playFmNote(ctx, master, oplWaves(ctx), ins, midiToFreq(60), 110, t0, t0 + 0.6);
+      const fmTune: FmTuning = { fmDepth: tune.fmDepth, carrierLiteral: tune.carrierLiteral, egMode: tune.egMode };
+      playFmNote(ctx, master, oplWaves(ctx), ins, midiToFreq(note), 110, t0, t0 + 0.6, fmTune);
     }
     stopTimer.current = setTimeout(stop, 1100);
   };
 
-  // Offline-render the whole song through the faithful OPL2 core and play it.
-  const playOpl2 = async () => {
+  // Offline-render the whole song through the faithful OPL2 core and play it,
+  // optionally starting `fromSec` in (so live re-tuning keeps your place).
+  const startOpl2 = async (fromSec = 0) => {
     if (!loaded) return;
     stop();
+    const gen = genRef.current;
     setRendering(true);
     await new Promise((r) => setTimeout(r, 10)); // let the "rendering…" state paint
+    if (gen !== genRef.current) return; // superseded by a newer stop/start
     try {
       const ctx = new AudioContext();
       ctxRef.current = ctx;
       const insArr = insts.length ? insts : [DEFAULT_INST];
-      const data = renderHeradOpl2(loaded.info.tracks, loaded.info.format, insArr, bpm, ctx.sampleRate, TPQ);
+      const data = renderHeradOpl2(loaded.info.tracks, loaded.info.format, insArr, bpm, ctx.sampleRate, TPQ, 240, tune);
       setRendering(false);
       if (data.length === 0) {
         stop();
         return;
       }
+      const dur = data.length / ctx.sampleRate;
+      const off = Math.min(Math.max(0, fromSec), Math.max(0, dur - 0.05));
       const buf = ctx.createBuffer(1, data.length, ctx.sampleRate);
       buf.getChannelData(0).set(data);
       const src = ctx.createBufferSource();
@@ -129,9 +168,10 @@ export function HeradStudio() {
       master.gain.value = 0.9;
       src.connect(master);
       master.connect(ctx.destination);
-      src.start();
+      src.start(0, off);
+      playRef.current = { startCtxTime: ctx.currentTime, fromSec: off };
       setPlaying(true);
-      stopTimer.current = setTimeout(stop, (data.length / ctx.sampleRate + 0.3) * 1000);
+      stopTimer.current = setTimeout(stop, (dur - off + 0.3) * 1000);
     } catch (e) {
       setRendering(false);
       setError(String(e));
@@ -148,25 +188,30 @@ export function HeradStudio() {
   }, [loaded]);
 
   const stop = () => {
+    genRef.current++; // invalidate any in-flight async render
     if (stopTimer.current) clearTimeout(stopTimer.current);
     stopTimer.current = null;
     if (ctxRef.current) {
       ctxRef.current.close().catch(() => {});
       ctxRef.current = null;
     }
+    playRef.current = null;
+    setRendering(false);
     setPlaying(false);
   };
 
-  const play = () => {
+  // Live WebAudio FM playback (schedules per note), from `fromSec` into the song.
+  const startWeb = (fromSec = 0) => {
     if (!loaded) return;
     stop();
     const ctx = new AudioContext();
     ctxRef.current = ctx;
     const tick = 60 / bpm / TPQ; // seconds per tick
     const master = ctx.createGain();
-    master.gain.value = 0.42;
+    master.gain.value = 0.42 * tune.gain;
     master.connect(ctx.destination);
     const waves = oplWaves(ctx);
+    const fmTune: FmTuning = { fmDepth: tune.fmDepth, carrierLiteral: tune.carrierLiteral, egMode: tune.egMode };
     const t0 = ctx.currentTime + 0.08;
     let voices = 0;
     let maxEnd = t0;
@@ -175,38 +220,64 @@ export function HeradStudio() {
       const events = parseTrackEvents(trk.data, loaded.info.format);
       let cur = 0;
       let prog = 0;
-      const active = new Map<number, { instIdx: number; freq: number; vel: number; t0: number }>();
-      const notes: { instIdx: number; freq: number; vel: number; t0: number; t1: number }[] = [];
+      const active = new Map<number, { instIdx: number; note: number; vel: number; start: number }>();
+      const notes: { instIdx: number; note: number; vel: number; start: number; end: number }[] = [];
       for (const e of events) {
         cur += e.delta * tick;
         if (e.type === "PROG_CHG") prog = e.data[0];
         else if (e.type === "NOTE_ON" && e.data[1] > 0) {
-          active.set(e.data[0], { instIdx: prog, freq: midiToFreq(e.data[0]), vel: e.data[1], t0: t0 + cur });
+          active.set(e.data[0], { instIdx: prog, note: e.data[0], vel: e.data[1], start: cur });
         } else if (e.type === "NOTE_OFF" || (e.type === "NOTE_ON" && e.data[1] === 0)) {
           const a = active.get(e.data[0]);
           if (a) {
-            notes.push({ ...a, t1: t0 + cur });
+            notes.push({ ...a, end: cur });
             active.delete(e.data[0]);
           }
         }
       }
-      const tEnd = t0 + cur + 0.3;
-      for (const [, a] of active) notes.push({ ...a, t1: tEnd });
+      const tEnd = cur + 0.3;
+      for (const [, a] of active) notes.push({ ...a, end: tEnd });
       for (const nt of notes) {
+        if (nt.end < fromSec) continue; // already finished before our start point
         if (voices >= MAX_VOICES) break;
         const inst = insts[nt.instIdx] ?? insts[0] ?? DEFAULT_INST;
-        const end = playFmNote(ctx, master, waves, inst, nt.freq, nt.vel, nt.t0, nt.t1);
+        const freq = midiToFreq(nt.note + tune.transpose);
+        const st = t0 + Math.max(0, nt.start - fromSec);
+        const en = t0 + Math.max(0, nt.end - fromSec);
+        const end = playFmNote(ctx, master, waves, inst, freq, nt.vel, st, en, fmTune);
         maxEnd = Math.max(maxEnd, end);
         voices++;
       }
     }
 
+    playRef.current = { startCtxTime: ctx.currentTime, fromSec };
     setPlaying(true);
     stopTimer.current = setTimeout(stop, Math.max(500, (maxEnd - ctx.currentTime + 0.3) * 1000));
   };
 
+  const begin = (fromSec = 0) => (engine === "opl2" ? startOpl2(fromSec) : startWeb(fromSec));
+
+  /** Song-seconds elapsed at the current instant (for position-preserving re-tune). */
+  const currentPos = () => {
+    const pr = playRef.current;
+    const ctx = ctxRef.current;
+    if (!pr || !ctx) return 0;
+    return pr.fromSec + (ctx.currentTime - pr.startCtxTime);
+  };
+
   useEffect(() => () => stop(), []);
   useIncoming("music", load);
+
+  // Live re-tune: while playing, any tempo/tuning/patch change re-renders from the
+  // current position after a short debounce — so you hear edits without losing your
+  // place, and BPM (etc.) apply immediately instead of only on the next Play.
+  useEffect(() => {
+    if (!playing) return;
+    const pos = currentPos();
+    const id = setTimeout(() => begin(pos), 320);
+    return () => clearTimeout(id);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [bpm, tune, insts]);
 
   return (
     <div className="col">
@@ -229,9 +300,7 @@ export function HeradStudio() {
                 <option value="opl2">OPL2 (faithful)</option>
                 <option value="webaudio">WebAudio FM</option>
               </select>
-              <label className="muted">bpm</label>
-              <input type="number" min={40} max={300} value={bpm} style={{ width: 56 }} onChange={(e) => setBpm(Math.max(40, +e.target.value || 120))} />
-              <button className="btn primary" disabled={rendering} onClick={playing ? stop : engine === "opl2" ? playOpl2 : play}>{rendering ? "⏳ rendering…" : playing ? "■ Stop" : "▶ Play"}</button>
+              <button className="btn primary" disabled={rendering} onClick={() => (playing ? stop() : begin(0))}>{rendering ? "⏳ rendering…" : playing ? "■ Stop" : "▶ Play"}</button>
               <button className="btn" onClick={() => downloadBytes(name.replace(/\.[^.]+$/, "") + ".mid", loaded.midi)}>⤓ MIDI</button>
               {edited && <Tag color="var(--amber)">edited</Tag>}
               <button className="btn primary" onClick={exportFile} title="Re-encode (byte-identical when unedited) and re-compress to HSQ">⤓ Export {loaded.wasHsq ? ".HSQ" : "file"}</button>
@@ -242,6 +311,43 @@ export function HeradStudio() {
             <Tag color="var(--blue)">{loaded.info.tracks.length} tracks</Tag>
             <Tag color="var(--green)">{loaded.instruments.length} FM patches</Tag>
             <Tag color="var(--amber)">{loaded.midi.length.toLocaleString()} B MIDI</Tag>
+          </div>
+
+          <div className="tune-panel">
+            <div className="row" style={{ justifyContent: "space-between", marginBottom: 8, alignItems: "baseline" }}>
+              <b className="small">🎛 Live tuning{playing ? <span className="muted" style={{ fontWeight: 400 }}> · drag to hear changes in place</span> : <span className="muted" style={{ fontWeight: 400 }}> · press ▶ Play, then tweak</span>}</b>
+              <div className="row small" style={{ gap: 4 }}>
+                {TUNE_PRESETS.map((p) => (
+                  <button key={p.name} className="btn small" title={p.title} onClick={() => setTune({ ...DEFAULT_SYNTH_PARAMS, ...p.p })}>{p.name}</button>
+                ))}
+                <button className="btn small" title="Restore decoded defaults + 120 bpm" onClick={() => { setTune(DEFAULT_SYNTH_PARAMS); setBpm(120); }}>↺ reset</button>
+              </div>
+            </div>
+            <div className="tune-grid">
+              <Knob label="tempo" value={bpm} min={40} max={300} onChange={setBpm} fmt={(v) => `${v} bpm`} accent title="Playback tempo. HERAD files carry no absolute tempo, so 120 is a starting guess — tune to taste." />
+              <Knob label="transpose" value={tune.transpose} min={-24} max={24} onChange={(v) => setTuneField("transpose", v)} fmt={x1} title="Shift every note by semitones (±2 octaves)." />
+              <Knob label="volume" value={tune.gain} min={0} max={1.5} step={0.05} onChange={(v) => setTuneField("gain", v)} fmt={pct} title="Master output level." />
+              <Knob label="FM depth" value={tune.fmDepth} min={0} max={3} step={0.05} onChange={(v) => setTuneField("fmDepth", v)} fmt={mul} title="FM modulation index — higher = brighter/buzzier, lower = purer/cleaner." />
+              <Knob label="envelope" value={tune.envScale} min={0.25} max={3} step={0.05} onChange={(v) => setTuneField("envScale", v)} fmt={mul} disabled={engine === "webaudio"} title="Envelope time scale — higher = slower attacks & longer decays. (OPL2 engine)" />
+              <Knob label="feedback" value={tune.feedbackScale} min={0} max={2} step={0.05} onChange={(v) => setTuneField("feedbackScale", v)} fmt={mul} disabled={engine === "webaudio"} title="Modulator self-feedback scale — adds grit/edge. (OPL2 engine)" />
+            </div>
+            <div className="row small" style={{ gap: 14, marginTop: 8 }}>
+              <label className="muted" title="Carrier at the written pitch (recommended, in-tune) vs. literal chip behaviour where the carrier MULT multiplies pitch — authentic but many voices leap octaves.">
+                carrier pitch{" "}
+                <select value={tune.carrierLiteral ? "literal" : "musical"} onChange={(e) => setTuneField("carrierLiteral", e.target.value === "literal")}>
+                  <option value="musical">musical (in-tune)</option>
+                  <option value="literal">hardware (raw MULT)</option>
+                </select>
+              </label>
+              <label className="muted" title="Envelope type: 'faithful' uses each patch's decoded bit; or force every voice to sustain (hold) or pluck (decay).">
+                envelope type{" "}
+                <select value={tune.egMode} onChange={(e) => setTuneField("egMode", e.target.value as SynthParams["egMode"])}>
+                  <option value="faithful">faithful (per-patch)</option>
+                  <option value="sustain">force sustain</option>
+                  <option value="pluck">force pluck</option>
+                </select>
+              </label>
+            </div>
           </div>
           <table>
             <thead>
@@ -304,12 +410,15 @@ export function HeradStudio() {
             </div>
           )}
           <div className="small muted" style={{ marginTop: 10 }}>
-            <b>▶ Play</b> drives the decoded <b>OPL2 instrument patches</b> through the selected engine. <b>OPL2 (faithful)</b>{" "}
-            is a sample-accurate YM3812 software synth — programmed via real register writes (slot tables + F-number table from
-            the <code>DNADL</code> driver disasm), with modulator self-<b>feedback</b>, the four OPL2 waveforms via the real
-            log-sin/exp pipeline, FM/additive routing and per-operator ADSR; it offline-renders the song to a buffer
-            (KSL/vibrato and cycle-exact EG timing are the remaining approximations). <b>WebAudio FM</b> is the older
-            lightweight oscillator approximation. <b>⤓ MIDI</b> exports a Standard MIDI File for external players.
+            <b>🎛 Live tuning</b> lets you dial the song in yourself — while it plays, dragging any slider re-renders from the
+            current spot, so you hear the change without losing your place (tempo, transpose &amp; volume work on both engines;
+            envelope &amp; feedback are OPL2-only). The <b>carrier pitch</b> and <b>envelope type</b> selectors let you A/B our
+            two interpretive calls: carrier-at-written-pitch vs. the literal chip MULT, and per-patch vs. forced envelopes.
+            Presets are just starting points. <b>▶ Play</b> drives the decoded <b>OPL2 instrument patches</b>: <b>OPL2 (faithful)</b>{" "}
+            is a sample-accurate YM3812 software synth (real register writes from the <code>DNADL</code> disasm, modulator
+            self-feedback, the four OPL2 waveforms, FM/additive routing, per-operator ADSR); <b>WebAudio FM</b> is the older
+            lightweight approximation. <b>⤓ MIDI</b> exports a Standard MIDI File. Edits to the FM patches below also feed
+            playback live.
           </div>
         </Panel>
       )}
