@@ -19,20 +19,39 @@ const DEFAULT_INST: HeradInstrument = {
   modEgType: true, carEgType: true, modKsr: false, carKsr: false,
 };
 
-/** One labelled slider with a live value read-out. */
-function Knob(props: { label: string; value: number; min: number; max: number; step?: number; onChange: (v: number) => void; fmt?: (v: number) => string; title?: string; accent?: boolean; disabled?: boolean }) {
+/**
+ * One tuning control: a slider for feel + a typeable numeric field for
+ * precision (arrow keys / spinner step, type an exact value), with the unit
+ * shown alongside and double-click-the-name to reset to the default.
+ */
+function Knob(props: {
+  label: string; value: number; min: number; max: number; step?: number;
+  onChange: (v: number) => void; unit?: string; title?: string; def?: number;
+  disabled?: boolean; accent?: boolean;
+}) {
+  const step = props.step ?? 1;
+  const [buf, setBuf] = useState<string | null>(null); // raw text while typing (keeps decimals intact)
+  const set = (v: number) => props.onChange(Math.min(props.max, Math.max(props.min, +v.toFixed(4))));
   return (
-    <label className="knob" title={props.title} style={props.disabled ? { opacity: 0.4 } : undefined}>
-      <span className="knob-l">{props.label}</span>
-      <input type="range" min={props.min} max={props.max} step={props.step ?? 1} value={props.value} disabled={props.disabled} onChange={(e) => props.onChange(+e.target.value)} />
-      <span className="knob-v" style={props.accent && !props.disabled ? { color: "var(--amber)" } : undefined}>{props.fmt ? props.fmt(props.value) : String(props.value)}</span>
-    </label>
+    <div className={"knob" + (props.disabled ? " off" : "")} title={props.title}>
+      <span className="knob-l" onDoubleClick={() => props.def !== undefined && set(props.def)} title={props.def !== undefined ? "Double-click to reset" : props.title}>
+        {props.label}
+      </span>
+      <input type="range" min={props.min} max={props.max} step={step} value={props.value} disabled={props.disabled} onChange={(e) => set(+e.target.value)} />
+      <span className="knob-vc">
+        <input
+          type="number" className="knob-n" min={props.min} max={props.max} step={step} disabled={props.disabled}
+          value={buf ?? String(props.value)}
+          style={props.accent && !props.disabled ? { color: "var(--amber)" } : undefined}
+          onFocus={(e) => e.currentTarget.select()}
+          onChange={(e) => { setBuf(e.target.value); const v = parseFloat(e.target.value); if (!Number.isNaN(v)) set(v); }}
+          onBlur={() => setBuf(null)}
+        />
+        {props.unit && <span className="knob-u">{props.unit}</span>}
+      </span>
+    </div>
   );
 }
-
-const x1 = (v: number) => `${v > 0 ? "+" : ""}${v}`;
-const pct = (v: number) => `${Math.round(v * 100)}%`;
-const mul = (v: number) => `${v.toFixed(2)}×`;
 
 // One-click starting points that bias the honest-but-tunable synth knobs.
 const TUNE_PRESETS: { name: string; title: string; p: Partial<SynthParams> }[] = [
@@ -274,7 +293,7 @@ export function HeradStudio() {
   useEffect(() => {
     if (!playing) return;
     const pos = currentPos();
-    const id = setTimeout(() => begin(pos), 320);
+    const id = setTimeout(() => begin(pos), 250);
     return () => clearTimeout(id);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [bpm, tune, insts]);
@@ -324,12 +343,15 @@ export function HeradStudio() {
               </div>
             </div>
             <div className="tune-grid">
-              <Knob label="tempo" value={bpm} min={40} max={300} onChange={setBpm} fmt={(v) => `${v} bpm`} accent title="Playback tempo. HERAD files carry no absolute tempo, so 120 is a starting guess — tune to taste." />
-              <Knob label="transpose" value={tune.transpose} min={-24} max={24} onChange={(v) => setTuneField("transpose", v)} fmt={x1} title="Shift every note by semitones (±2 octaves)." />
-              <Knob label="volume" value={tune.gain} min={0} max={1.5} step={0.05} onChange={(v) => setTuneField("gain", v)} fmt={pct} title="Master output level." />
-              <Knob label="FM depth" value={tune.fmDepth} min={0} max={3} step={0.05} onChange={(v) => setTuneField("fmDepth", v)} fmt={mul} title="FM modulation index — higher = brighter/buzzier, lower = purer/cleaner." />
-              <Knob label="envelope" value={tune.envScale} min={0.25} max={3} step={0.05} onChange={(v) => setTuneField("envScale", v)} fmt={mul} disabled={engine === "webaudio"} title="Envelope time scale — higher = slower attacks & longer decays. (OPL2 engine)" />
-              <Knob label="feedback" value={tune.feedbackScale} min={0} max={2} step={0.05} onChange={(v) => setTuneField("feedbackScale", v)} fmt={mul} disabled={engine === "webaudio"} title="Modulator self-feedback scale — adds grit/edge. (OPL2 engine)" />
+              <Knob label="tempo" value={bpm} min={40} max={300} step={1} unit="bpm" def={120} accent onChange={setBpm} title="Playback tempo. HERAD files carry no absolute tempo, so 120 is a starting guess — tune to taste." />
+              <Knob label="transpose" value={tune.transpose} min={-24} max={24} step={1} unit="st" def={0} onChange={(v) => setTuneField("transpose", v)} title="Shift every note by semitones (±2 octaves). ±12 = one octave." />
+              <Knob label="volume" value={Math.round(tune.gain * 100)} min={0} max={150} step={5} unit="%" def={100} onChange={(v) => setTuneField("gain", v / 100)} title="Master output level." />
+              <Knob label="FM depth" value={tune.fmDepth} min={0} max={3} step={0.05} unit="×" def={1} onChange={(v) => setTuneField("fmDepth", v)} title="FM modulation index — higher = brighter/buzzier, lower = purer/cleaner." />
+              <Knob label="envelope" value={tune.envScale} min={0.25} max={3} step={0.05} unit="×" def={1} disabled={engine === "webaudio"} onChange={(v) => setTuneField("envScale", v)} title="Envelope time scale — higher = slower attacks & longer decays. (OPL2 engine)" />
+              <Knob label="feedback" value={tune.feedbackScale} min={0} max={2} step={0.05} unit="×" def={1} disabled={engine === "webaudio"} onChange={(v) => setTuneField("feedbackScale", v)} title="Modulator self-feedback scale — adds grit/edge. (OPL2 engine)" />
+            </div>
+            <div className="small muted" style={{ marginTop: 6, opacity: 0.8 }}>
+              Drag a slider, or click a number to type an exact value (↑/↓ arrows nudge). Double-click a knob's name to reset it.
             </div>
             <div className="row small" style={{ gap: 14, marginTop: 8 }}>
               <label className="muted" title="Carrier at the written pitch (recommended, in-tune) vs. literal chip behaviour where the carrier MULT multiplies pitch — authentic but many voices leap octaves.">

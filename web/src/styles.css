@@ -170,9 +170,21 @@ tr.clickable:hover { background: #ffffff08; cursor: pointer; }
 
 /* ---- Music tab: live tuning panel ---- */
 .tune-panel { border: 1px solid var(--border-hi); border-radius: 8px; padding: 10px 12px; background: #0f0c08; margin-bottom: 10px; }
-.tune-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(196px, 1fr)); gap: 5px 18px; }
-.knob { display: grid; grid-template-columns: 62px 1fr 54px; align-items: center; gap: 8px; font-size: 11px; color: var(--muted); cursor: pointer; }
-.knob-l { text-transform: uppercase; letter-spacing: 0.06em; font-size: 10px; }
+.tune-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(210px, 1fr)); gap: 5px 18px; }
+.knob { display: grid; grid-template-columns: 60px 1fr 66px; align-items: center; gap: 8px; font-size: 11px; color: var(--muted); }
+.knob.off { opacity: 0.45; }
+.knob-l { text-transform: uppercase; letter-spacing: 0.06em; font-size: 10px; cursor: default; user-select: none; }
+.knob-l:hover { color: var(--text); }
 .knob input[type="range"] { width: 100%; padding: 0; accent-color: var(--amber); background: transparent; border: none; }
 .knob input[type="range"]:focus { outline: none; }
-.knob-v { text-align: right; color: var(--text); font-variant-numeric: tabular-nums; }
+.knob-vc { display: inline-flex; align-items: baseline; justify-content: flex-end; gap: 3px; }
+.knob-n {
+  width: 44px; text-align: right; background: transparent; border: 1px solid transparent;
+  border-radius: 3px; padding: 1px 3px; font-size: 11px; color: var(--text);
+  font-variant-numeric: tabular-nums; -moz-appearance: textfield;
+}
+.knob-n:hover:not(:disabled) { border-color: var(--border); }
+.knob-n:focus { border-color: var(--amber); background: var(--panel-hi); outline: none; }
+.knob-n:disabled { color: var(--muted); }
+.knob-n::-webkit-outer-spin-button, .knob-n::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
+.knob-u { font-size: 9px; color: var(--muted); min-width: 20px; letter-spacing: 0.04em; }
